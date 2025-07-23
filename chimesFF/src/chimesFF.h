@@ -300,6 +300,8 @@ private:
     inline void set_cheby_polys(vector<double> &Tn, vector<double> &Tnd, double dx, const int pair_idx,
                                 const double inner_cutoff, const double outer_cutoff, const int bodiedness_idx) ;
 
+    inline void MorseT(double dx, double &sx, const int pair_idx, const double inner_cutoff, const double outer_cutoff);
+
 	void set_polys_out_of_range(vector<double> &Tn, vector<double> &Tnd, double dx, double x,
 								int poly_order, double inner_cutoff, double exprlen, double dx_dr) ;
     
@@ -613,6 +615,31 @@ inline void chimesFF::set_cheby_polys(vector<double> &Tn, vector<double> &Tnd, d
 
 		set_polys_out_of_range(Tn, Tnd, dx_orig, x, poly_orders[bodiedness_idx], inner_cutoff, exprlen, dx_dr) ;
     }        
+
+}
+
+inline void chimesFF::MorseT(double dx, double &sx, const int pair_idx, const double inner_cutoff, const double outer_cutoff) 
+{
+    // Currently assumes a Morse-style transformation has been requested
+    
+    // Sets the value of the Chebyshev polynomials (Tn) and their derivatives (Tnd).  Tnd is the derivative
+    // with respect to the interatomic distance, not the transformed distance (x).
+    
+    // Do the Morse transformation
+    
+    double x_min = exp(-1*outer_cutoff/morse_var[pair_idx]);
+    double x_max = exp(-1*inner_cutoff/morse_var[pair_idx]);
+    
+    double x_avg   = 0.5 * (x_max + x_min);
+    double x_diff  = 0.5 * (x_max - x_min);
+	
+    x_diff *= -1.0; // Special for Morse style
+
+    double dx_orig = dx ;
+
+	double exprlen = exp(-1*dx/morse_var[pair_idx]);
+	sx  = (exprlen - x_avg)/x_diff;
+	// sx = (-exprlen/morse_var[pair_idx])/x_diff;		
 
 }
 

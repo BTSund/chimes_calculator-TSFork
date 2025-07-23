@@ -1751,9 +1751,15 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
 
     // Look up/interpolate for energy and force scalar
 
-    energy              += get_tab_2B(pair_idx, dx, true);
-    double force_scalar  = get_tab_2B(pair_idx, dx, false); 
+    double sx;
+    MorseT(dx, sx , pair_idx, chimes_2b_cutoff[pair_idx][0], chimes_2b_cutoff[pair_idx][1]);
+    cout << "2b" << endl;
+    cout << dx << endl;
+    cout << sx << endl;
 
+    energy              += get_tab_2B(pair_idx, sx, true);
+    double force_scalar  = get_tab_2B(pair_idx, sx, false); 
+    cout << get_tab_2B(pair_idx, sx, true) << endl;
     force[0*CHDIM+0] += force_scalar * dr[0];
     force[0*CHDIM+1] += force_scalar * dr[1];
     force[0*CHDIM+2] += force_scalar * dr[2];
@@ -1812,20 +1818,22 @@ double chimesFF::get_tab_2B(int pair_idx, double rij, bool for_energy)
 {
     // Perform binary search to find the appropriate interval
     
+    cout<< "rij: ";
+    cout << rij << endl;
     auto it = lower_bound(tab_r[pair_idx].begin(), tab_r[pair_idx].end(), rij);
     int   i = distance(tab_r[pair_idx].begin(), it);
 
-
     // Ensure rij is in the valid range and handle things if it is not
-
+    cout<< "it: ";
+    cout << i << endl;
     if (it == tab_r[pair_idx].end())
-        return 0.0;
+        cout << "1828" << endl;
     else if (it == tab_r[pair_idx].begin())
     {
         //throw out_of_range("x_point is outside the range of x data.");
         cout << "Distance is outside the tabulated range" << endl;
         cout << rij << endl;
-        exit(0);
+        // exit(0);
     }
         
     if (rij == *it && i > 0)  // Adjust index i to point to the beginning of the interval ... If x_point is exactly a value in x, move left to the interval start
@@ -2090,6 +2098,7 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
 }
 void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp, vector<double> & force_scalar_in)
 {
+    // auto t0 = chrono::high_resolution_clock::now();
     // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
     //
     // Input parameters:
@@ -2149,11 +2158,23 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
 
     // Look up/interpolate for energy and force scalar .... this can likely be done MUCH more efficiently by integrating force/energy interpolation more completely
     // energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], dx[0], dx[1], dx[2]); // Function is overloaded. No final argument == this is for an energy calculation.
-    // auto t1 = chrono::high_resolution_clock::now();
     double force_scalar[npairs];
-    energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], dx[0], dx[1], dx[2],  force_scalar);   
-    // auto t2 = chrono::high_resolution_clock::now();
-    // cout << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " ns \n";
+
+    vector<double> sx(3) ;
+
+    MorseT(dx[0], sx[0],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
+    MorseT(dx[1], sx[1],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
+    MorseT(dx[2], sx[2],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
+    cout << "3b" << endl;
+    cout << dx[0] << endl;
+    cout << sx[0] << endl;
+    cout << dx[1] << endl;
+    cout << sx[1] << endl;
+    cout << dx[2] << endl;
+    cout << sx[2] << endl;
+
+    energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], -sx[0], -sx[1], -sx[2],  force_scalar);   
+
     // Accumulate forces/stresses on/from the ij pair
     
     force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
@@ -2231,6 +2252,10 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     force_scalar_in[0] = force_scalar[0];
     force_scalar_in[1] = force_scalar[1];
     force_scalar_in[2] = force_scalar[2];
+    // auto t3 = chrono::high_resolution_clock::now();
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t1-t0).count() << " before \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " during \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t3-t2).count() << " after  \n";
     return;    
 }
 
@@ -2279,6 +2304,8 @@ double tricubicInterpolate(const array<double, 64>& p, double x, double y, doubl
 // Perform the tricubic interpolation
 vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik, double rjk,const vector<double>& y, const vector<double>& y1, const vector<double>& y2, const vector<double>& y3) {
     // Use a reference to make it quicker
+
+    // auto t0 = chrono::high_resolution_clock::now();
     const auto& tab_rij = tab_rij_3B[tripidx];
     const auto& tab_rik = tab_rik_3B[tripidx];
     const auto& tab_rjk = tab_rjk_3B[tripidx];
@@ -2286,7 +2313,7 @@ vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik
     // The size before the second column resest
     int size_ik = static_cast<int>(cbrt(tab_rik.size()));  // The total number of rows before the second column changes
     int size_ij = size_ik * size_ik; // Number of rows before the first column changes
-    double dr = (tab_rjk[size_ij + size_ik + 1] - tab_rjk[0]); // only works for constant length vectors
+    double dr = 1/(tab_rjk[size_ij + size_ik + 1] - tab_rjk[0]); // only works for constant length vectors
 
     // find the first occurance of the ij, ik jk, distance
     // This method is better for non-even spacing but more annoying for different element types
@@ -2295,15 +2322,16 @@ vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik
     // int k = std::lower_bound((*tab_rjk_3B_ptr).begin(), (*tab_rjk_3B_ptr).begin() + size_ik, rjk) - (*tab_rjk_3B_ptr).begin() -1;
 
     // Compute indices with the closed form solution
-    int i = static_cast<int>((rij - tab_rij[0]) / dr);
-    int j = static_cast<int>((rik - tab_rik[0]) / dr);
-    int k = static_cast<int>((rjk - tab_rjk[0]) / dr);
+    int i = static_cast<int>((rij - tab_rij[0]) * dr);
+    int j = static_cast<int>((rik - tab_rik[0]) * dr);
+    int k = static_cast<int>((rjk - tab_rjk[0]) * dr);
 
     i = max(1, i);
     j = max(1, j);
     k = max(1, k);
-
     array<double, 64> values{}, values1{}, values2{}, values3{};
+    // auto t1 = chrono::high_resolution_clock::now();
+
     for (int di = -1; di <= 2; ++di) {
         for (int dj = -1; dj <= 2; ++dj) {
             for (int dk = -1; dk <= 2; ++dk) {
@@ -2322,37 +2350,39 @@ vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik
             }
         }
     }
+    // auto t2 = chrono::high_resolution_clock::now();
 
     // these are the fraction of between the previous and next index
-    double xi = (rij - tab_rij[i * size_ij + j * size_ik + k]) / dr;
-    double yi = (rik - tab_rik[j * size_ik + k]) / dr;
-    double zi = (rjk - tab_rjk[k]) / dr;
-
+    double xi = (rij - tab_rij[i * size_ij + j * size_ik + k]) * dr;
+    double yi = (rik - tab_rik[j * size_ik + k]) * dr;
+    double zi = (rjk - tab_rjk[k]) * dr;
     // Return vector of the results
+    // auto t3 = chrono::high_resolution_clock::now();
+
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t1-t0).count() << " " << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " "<< chrono::duration_cast<chrono::nanoseconds>(t3-t2).count()<< " " << chrono::duration_cast<chrono::nanoseconds>(t4-t3).count() << " " <<rij<<" " <<rik<<" " <<rjk<<  endl;
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " loop \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t3-t2).count() << " before int \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t4-t3).count() << " int \n";
     return {
         tricubicInterpolate(values, zi, yi, xi),
         tricubicInterpolate(values1, zi, yi, xi),
         tricubicInterpolate(values2, zi, yi, xi),
         tricubicInterpolate(values3, zi, yi, xi)
-    };
+    };;
 }
 
 // Generic version
 
 double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string& pairtyp_ik, const string& pairtyp_jk,  double rij, double rik, double rjk, double (&force_scalar)[3]) 
 {
+    // auto t0 = chrono::high_resolution_clock::now();
 
     // Determine the pair types (e.g., CO, CO, CC)
 
     array<string, 3> pair_types = {pairtyp_ij, pairtyp_ik, pairtyp_jk};
     
     // Store the corresponding distances
-    
     array<double, 3> pair_dists = {rij, rik, rjk};
-    
-    // Sort these two items together so they match the ordering of the table:
-    // Pairs are sorted alphabetically, and within a given set of identical pairs, 
-    // distances are sorted in descending order
     
     // Create a vector of pairs
     array<pair<string, double>, 3> pairs;
@@ -2369,11 +2399,16 @@ double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string&
     }
 
     // coupled interpolation code
+    // auto t1 = chrono::high_resolution_clock::now();
     auto results = interpolateTricubic(tripidx, pair_dists[0], pair_dists[1], pair_dists[2], tab_e_3B[tripidx], tab_f_ij_3B[tripidx], tab_f_ik_3B[tripidx], tab_f_jk_3B[tripidx]);
-
+    // auto t2 = chrono::high_resolution_clock::now();
     force_scalar[0] = results[1];
     force_scalar[1] = results[2];
     force_scalar[2] = results[3];
+    // auto t3 = chrono::high_resolution_clock::now();
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t1-t0).count() << " before \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " during \n";
+    // cout << chrono::duration_cast<chrono::nanoseconds>(t3-t2).count() << " after \n";
     return results[0]; // output energy
 }
 // energy version

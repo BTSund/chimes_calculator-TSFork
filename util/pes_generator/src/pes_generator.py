@@ -82,6 +82,10 @@ no_atom_types = None
 pair_types = []
 trip_types = []
 quad_types = []
+s_min = []
+s_max = []
+morse_lambda = []
+e = 2.7182818284590452393
 
 for i in range(len(contents)):
     
@@ -101,7 +105,25 @@ for i in range(len(contents)):
         
     if "QUADRUPLETYPE PARAMS:" in contents[i-1]:
         quad_types.append(line.split()[-4:len(line)])
-        print("Found quad_types type", quad_types[-1], "of index", len(quad_types)-1)        
+        print("Found quad_types type", quad_types[-1], "of index", len(quad_types)-1)   
+
+    if "# S_MINIM #" in line:
+        index = int(line.split("# S_MINIM #")[0].count('#')/2)
+        s_min.append(float(contents[i+1].split()[index]))
+        print(s_min)
+        
+    if "# S_MAXIM #" in line:
+        index = int(line.split("# S_MAXIM #")[0].count('#')/2)
+        s_max.append(float(contents[i+1].split()[index]))
+        print(s_max)        
+
+    if "# MORSE_LAMBDA #" in line:
+        index = int(line.split("# MORSE_LAMBDA #")[0].count('#')/2)
+        morse_lambda.append(float(contents[i+1].split()[index]))
+        print(morse_lambda)
+
+
+        
 
 
 # Do the 2-body scans
@@ -128,15 +150,19 @@ if hasattr(config,'PAIRTYPES'):
     
     
         steps = np.arange(config.PAIRSTART[i], config.PAIRSTOP[i], config.PAIRSTEP[i], dtype=float)
-    
+        s = np.linspace(-1,1, steps.size)
+        print(len(s))
         for j in range(steps.size): # r_ij distance
         
             energy = 0.0
             force = 0.0
-            force, dummy_stress, energy = chimescalc_py.chimes_compute_2b_props(steps[j], [1,0,0], pair_types[config.PAIRTYPES[i]], dummy_force, dummy_stress, energy)
-        
-            #print(force[0][0])
-            scanfile.write(str(steps[j]) + " " + str(energy) + " " + str(force[0][0]) + '\n')
+            s_ij=s[j]
+            A = -2/((s_ij-1)*np.exp(s_max[i]/morse_lambda[i])-(s_ij+1)*np.exp(s_min[i]/morse_lambda[i]))
+            r_ij = morse_lambda[i] * np.log(A)+ s_max[i]+ s_min[i]
+            print(s_ij)
+            print(r_ij)
+            force, dummy_stress, energy = chimescalc_py.chimes_compute_2b_props(r_ij, [1,0,0], pair_types[config.PAIRTYPES[i]], dummy_force, dummy_stress, energy)
+            scanfile.write(str(s_ij) + " " + str(energy) + " " + str(force[0][0]) + '\n')
         
         scanfile.close()
 
@@ -182,28 +208,14 @@ if hasattr(config,'TRIPTYPES'):
                     dummy_force  = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]] # Need to re-declare because compute_2b changes its dimension
                     dummy_stress = [0.0]*9
                     # Get/write the 3-body only energy
-                    ij = (steps[j]/2)**.5
-                    ik = (steps[k]/2)**.5
-                    jk = (steps[l]/2)**.5
-
                     forces, dummy_stress, energy = chimescalc_py.chimes_compute_3b_props([steps[j], steps[k], steps[l]], [[1,0,0],[0,1,0],[0,0,1]], trip_types[config.TRIPTYPES[i]], dummy_force, dummy_stress, energy)
-                    # print(steps[j])
-                    # print(steps[k])
-                    # print(steps[l])
-                    # print(forces[0][0])
-                    # print(forces[0][1])
-                    # print(forces[0][2])
-                    # print(forces[1][0])
-                    # print(forces[1][1])
-                    # print(forces[1][2])
-                    # print(forces[2][0])
-                    # print(forces[2][1])
-                    # print(forces[2][2])
-                    # for t1 in forces:
-                    #     for t2 in t1:
-                    #         print(t2)
 
-                    scanfile_1.write(str(steps[j]) + " " + str(steps[k]) + " " + str(steps[l]) + " " + str(energy)+ " " + str(forces[0][0])+ " " + str(forces[0][1])+ " " + str(forces[1][2]) + '\n')
+                    x_min = e**(-s_min[i]/morse_lambda[i])
+                    x_max = e**(-s_max[i]/morse_lambda[i])
+                    xij = e**(-steps[j]/morse_lambda[i])
+                    xik = e**(-steps[k]/morse_lambda[i])
+                    xjk = e**(-steps[l]/morse_lambda[i])
+                    scanfile_1.write(str((steps[j]-(.5*(s_max[i]+s_min[i])))/(.5*(s_max[i]-s_min[i]))) + " " + str((steps[k]-(.5*(s_max[i]+s_min[i])))/(.5*(s_max[i]-s_min[i]))) + " " + str((steps[l]-(.5*(s_max[i]+s_min[i])))/(.5*(s_max[i]-s_min[i]))) + " " + str(energy)+ " " + str(forces[0][0])+ " " + str(forces[0][1])+ " " + str(forces[1][2]) + '\n')
                 
                     # Add/write the 2-body contributions
         
@@ -211,7 +223,7 @@ if hasattr(config,'TRIPTYPES'):
                     dummy_force, dummy_stress, energy = chimescalc_py.chimes_compute_2b_props(steps[k], [0.0, 0.0, 0.0], [trip_types[config.TRIPTYPES[i]][0], trip_types[config.TRIPTYPES[i]][2]], dummy_force, dummy_stress, energy)
                     dummy_force, dummy_stress, energy = chimescalc_py.chimes_compute_2b_props(steps[l], [0.0, 0.0, 0.0], [trip_types[config.TRIPTYPES[i]][1], trip_types[config.TRIPTYPES[i]][2]], dummy_force, dummy_stress, energy)
 
-                    scanfile_2.write(str(steps[j]) + " " + str(steps[k]) + " " + str(steps[l]) + " " + str(energy)+ " " + str(forces[0][0])+ " " + str(forces[0][1])+ " " + str(forces[1][2]) + '\n')
+                    scanfile_2.write(str((xij-(.5*(x_max+x_min)))/(.5*(x_max-x_min))) + " " + str((xik-(.5*(x_max+x_min)))/(.5*(x_max-x_min))) + " " + str((xjk-(.5*(x_max+x_min)))/(.5*(x_max-x_min))) + " " + str(energy)+ " " + str(forces[0][0])+ " " + str(forces[0][1])+ " " + str(forces[1][2]) + '\n')
     
         scanfile_1.close()    
         scanfile_2.close()
