@@ -107,21 +107,27 @@ for i in range(len(contents)):
         quad_types.append(line.split()[-4:len(line)])
         print("Found quad_types type", quad_types[-1], "of index", len(quad_types)-1)   
 
+for i in range(len(contents)):
+    
+    line = contents[i]
+
     if "# S_MINIM #" in line:
         index = int(line.split("# S_MINIM #")[0].count('#')/2)
-        s_min.append(float(contents[i+1].split()[index]))
-        print(s_min)
+        for j in range(len(pair_types)):
+            s_min.append(float(contents[i+j+1].split()[index]))
+            print(s_min)
         
     if "# S_MAXIM #" in line:
         index = int(line.split("# S_MAXIM #")[0].count('#')/2)
-        s_max.append(float(contents[i+1].split()[index]))
-        print(s_max)        
+        for j in range(len(pair_types)):
+            s_max.append(float(contents[i+j+1].split()[index]))
+            print(s_max)        
 
     if "# MORSE_LAMBDA #" in line:
         index = int(line.split("# MORSE_LAMBDA #")[0].count('#')/2)
-        morse_lambda.append(float(contents[i+1].split()[index]))
-        print(morse_lambda)
-
+        for j in range(len(pair_types)):
+            morse_lambda.append(float(contents[i+j+1].split()[index]))
+            print(morse_lambda)
 
         
 
@@ -157,10 +163,15 @@ if hasattr(config,'PAIRTYPES'):
             energy = 0.0
             force = 0.0
             s_ij=s[j]
+            # print(len(s))
+            print(i)
+            print(len(morse_lambda))
+            print(len(s_max))
+            print(len(s_min))
             A = -2/((s_ij-1)*np.exp(s_max[i]/morse_lambda[i])-(s_ij+1)*np.exp(s_min[i]/morse_lambda[i]))
             r_ij = morse_lambda[i] * np.log(A)+ s_max[i]+ s_min[i]
-            print(s_ij)
-            print(r_ij)
+            # print(s_ij)
+            # print(r_ij)
             force, dummy_stress, energy = chimescalc_py.chimes_compute_2b_props(r_ij, [1,0,0], pair_types[config.PAIRTYPES[i]], dummy_force, dummy_stress, energy)
             scanfile.write(str(s_ij) + " " + str(energy) + " " + str(force[0][0]) + '\n')
         

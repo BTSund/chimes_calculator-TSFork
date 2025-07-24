@@ -1753,9 +1753,6 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
 
     double sx;
     MorseT(dx, sx , pair_idx, chimes_2b_cutoff[pair_idx][0], chimes_2b_cutoff[pair_idx][1]);
-    cout << "2b" << endl;
-    cout << dx << endl;
-    cout << sx << endl;
 
     energy              += get_tab_2B(pair_idx, sx, true);
     double force_scalar  = get_tab_2B(pair_idx, sx, false); 
@@ -1824,16 +1821,13 @@ double chimesFF::get_tab_2B(int pair_idx, double rij, bool for_energy)
     int   i = distance(tab_r[pair_idx].begin(), it);
 
     // Ensure rij is in the valid range and handle things if it is not
-    cout<< "it: ";
-    cout << i << endl;
+
     if (it == tab_r[pair_idx].end())
-        cout << "1828" << endl;
+        return 0.0;
     else if (it == tab_r[pair_idx].begin())
     {
-        //throw out_of_range("x_point is outside the range of x data.");
-        cout << "Distance is outside the tabulated range" << endl;
-        cout << rij << endl;
-        // exit(0);
+        throw out_of_range("x_point is outside the range of x data.");
+        exit(0);
     }
         
     if (rij == *it && i > 0)  // Adjust index i to point to the beginning of the interval ... If x_point is exactly a value in x, move left to the interval start
@@ -2165,13 +2159,6 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     MorseT(dx[0], sx[0],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
     MorseT(dx[1], sx[1],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
     MorseT(dx[2], sx[2],atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ], chimes_3b_cutoff[tripidx][0][mapped_pair_idx[2]], chimes_3b_cutoff[tripidx][1][mapped_pair_idx[2]]);
-    cout << "3b" << endl;
-    cout << dx[0] << endl;
-    cout << sx[0] << endl;
-    cout << dx[1] << endl;
-    cout << sx[1] << endl;
-    cout << dx[2] << endl;
-    cout << sx[2] << endl;
 
     energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], -sx[0], -sx[1], -sx[2],  force_scalar);   
 
