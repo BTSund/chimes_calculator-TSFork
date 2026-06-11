@@ -382,9 +382,7 @@ void PairCHIMES::build_mb_neighlists()
 				continue;
 
 			if (j == i)
-				continue;
-			if (jtag < itag) 
-				continue;				
+				continue;			
 				
 			// Check ij distance
 
@@ -407,7 +405,7 @@ void PairCHIMES::build_mb_neighlists()
 
 				if ( (k==i) || (k==j) )
 					continue;
-				if ( (ktag < itag) || (ktag < jtag) )
+				if ((ktag < jtag) )
 					continue;						
 							
  	 			// Check ik distance			
@@ -421,7 +419,7 @@ void PairCHIMES::build_mb_neighlists()
 
 				dist_jk = get_dist(j,k);
 				
-				if( (dist_ij < maxcut_3b_padded) &&  (dist_ik < maxcut_3b_padded) && (dist_jk < maxcut_3b_padded) )
+				if( (dist_ij < maxcut_3b_padded) &&  (dist_ik < maxcut_3b_padded))
 				{
 					// If we're here and valid_3mer == true, then add the triplet to the chimes neigh list        
 
@@ -432,7 +430,7 @@ void PairCHIMES::build_mb_neighlists()
 					neighborlist_3mers.push_back(tmp_3mer);
 				}
 									
-				if ((dist_ij >= maxcut_4b_padded) || (dist_ik >= maxcut_4b_padded) || (dist_jk >= maxcut_4b_padded) )	
+				if ((dist_ij >= maxcut_4b_padded) || (dist_ik >= maxcut_4b_padded))	
 					continue;					
 				
 				// Now decide if we should continue on to 4-body neighbor list construction
@@ -458,7 +456,7 @@ void PairCHIMES::build_mb_neighlists()
 					
 					if ( (l==i) || (l==j) || (l==k))
 						continue;
-					if ((ltag < itag) ||(ltag < jtag)||(ltag < ktag)) 
+					if ((ltag < jtag)||(ltag < ktag)) 
 						continue;
 											
 					// Check il distance			
@@ -472,15 +470,10 @@ void PairCHIMES::build_mb_neighlists()
 	
 					dist_jl = get_dist(j,l);
 	
-					if (dist_jl >= maxcut_4b_padded)
-						continue;
 								
 					// Check kl distance			
 
 					dist_kl = get_dist(k,l);
-	
-					if (dist_kl >= maxcut_4b_padded)
-						continue;
 		
 					// If we're here and valid_4mer == true, then add the quadruplet to the chimes neigh list
 					
@@ -549,7 +542,7 @@ void PairCHIMES::compute(int eflag, int vflag)
     std::vector<std::vector<double>> tmp_dist_3b;
     std::vector<std::vector<double>> tmp_dist_4b;
 	bool 				 tmp_FP;
-	bool 				 valid_order;
+	bool 				 valid_order=true;
 	if (fingerprint){
 		if(update->ntimestep % IO_freq == 0){tmp_FP = true;}
 	}else{tmp_FP = false;}
@@ -626,7 +619,7 @@ void PairCHIMES::compute(int eflag, int vflag)
 				continue;
 				
 			
-			if (jtag <= itag) // only allow calculation for j<i, since we've requested a full neighbor list
+			if (jtag == itag) // only allow calculation for j<i, since we've requested a full neighbor list
 				continue;
 				
 			// Get distance using ghost atoms... don't need MIC since we're using ghost atoms
@@ -649,7 +642,7 @@ void PairCHIMES::compute(int eflag, int vflag)
             else
 #endif
 			#ifdef FINGERPRINT
-			valid_order = (i < j);
+			// valid_order = (i < j);
 			if (tmp_FP && valid_order){
 				double tmp_force_scalar;
 				chimes_calculator.compute_2B( dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmp, tmp_force_scalar, tmp_dist_2b, tmp_FP && valid_order);	// Auto-updates badness
@@ -727,7 +720,7 @@ void PairCHIMES::compute(int eflag, int vflag)
 #endif
 
 			#ifdef FINGERPRINT
-			valid_order = (tag[i] < tag[j] && tag[i] < tag[k] && tag[j] < tag[k]);
+			// valid_order = (tag[i] < tag[j] && tag[i] < tag[k] && tag[j] < tag[k]);
 			if (tmp_FP && valid_order){
 				vector<double> tmp_force_scalar_3b(3);
 				chimes_calculator.compute_3B( dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp, tmp_force_scalar_3b, tmp_dist_3b, tmp_FP && valid_order);
@@ -801,7 +794,7 @@ void PairCHIMES::compute(int eflag, int vflag)
 			energy = 0.0 ;	
 			
 			#ifdef FINGERPRINT
-			valid_order = (tag[i] < tag[j] && tag[j] < tag[k] && tag[k] < tag[l]);
+			// valid_order = (tag[i] < tag[j] && tag[j] < tag[k] && tag[k] < tag[l]);
 			if (tmp_FP && valid_order){
 				vector<double> tmp_force_scalar_4b(6);
 				chimes_calculator.compute_4B( dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp, tmp_force_scalar_4b, tmp_dist_4b, tmp_FP && valid_order);

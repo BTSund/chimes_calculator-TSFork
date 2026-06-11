@@ -1027,15 +1027,34 @@ void chimesFF::read_parameters(string paramfile)
     
             // Set the default inner/outer cutoffs to the corresponding 2-body value
 
+            // Set the default inner/outer cutoffs using the atom-centered convention.
+            // Atom ordering in the triplet is:
+            //   atom 0 = center
+            //   atom 1 = neighbor j
+            //   atom 2 = neighbor k
+            //
+            // Pair slot ordering is:
+            //   0 -> ij
+            //   1 -> ik
+            //   2 -> jk
+            //
+            // Outer cutoff for jk is derived:
+            //   S_MAXIM(jk) = S_MAXIM(ij) + S_MAXIM(ik)
+
             chimes_3b_cutoff[i].resize(2);
 
-            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);
-            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);
-            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);
-            
-            chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_1][1]);
-            chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_2][1]);
-            chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);   
+            // Inner cutoffs
+            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);   // ij
+            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);   // ik
+            chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);   // jk (keep stored/default inner cutoff)
+
+            // Outer cutoffs
+            double smax_ij = chimes_2b_cutoff[pairtyp_1][1];
+            double smax_ik = chimes_2b_cutoff[pairtyp_2][1];
+
+            chimes_3b_cutoff[i][1].push_back(smax_ij);               // ij
+            chimes_3b_cutoff[i][1].push_back(smax_ik);               // ik
+            chimes_3b_cutoff[i][1].push_back(smax_ij + smax_ik);     // jk = ij + ik
         }
         
         param_file.seekg(0);
@@ -1065,41 +1084,54 @@ void chimesFF::read_parameters(string paramfile)
                                         
                     for(int i=0; i<ntrips; i++)
                     {
-                        chimes_3b_cutoff[i][1][0] = cutval;
-                        chimes_3b_cutoff[i][1][1] = cutval;
-                        chimes_3b_cutoff[i][1][2] = cutval;                    
+                        // Center-neighbor outer cutoffs
+                        chimes_3b_cutoff[i][1][0] = cutval;   // ij
+                        chimes_3b_cutoff[i][1][1] = cutval;   // ik
+
+                        // Derived non-center outer cutoff
+                        chimes_3b_cutoff[i][1][2] = chimes_3b_cutoff[i][1][0] + chimes_3b_cutoff[i][1][1]; // jk
                     }
                 }
-                else
+                                else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(3);
                     vector<double> cutoffval(3);
 
-    
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
                         split_line(line, tmp_str_items);
-                        
-                        tmp_int = atom_idx_trip_map[distance(atom_typ_trip_map.begin(), find(atom_typ_trip_map.begin(), atom_typ_trip_map.end(), tmp_str_items[0]))];
+
+                        tmp_int = atom_idx_trip_map[
+                            distance(atom_typ_trip_map.begin(),
+                                     find(atom_typ_trip_map.begin(), atom_typ_trip_map.end(), tmp_str_items[0]))
+                        ];
 
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
                         pair_name[2] = tmp_str_items[3];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[4]);
                         cutoffval[1] = stod(tmp_str_items[5]);
                         cutoffval[2] = stod(tmp_str_items[6]);
-                        
-                        vector<bool>   disqualified(3,false);
-                        
-                        chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
-                        chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
-                        chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
-                                        
+
+                        // Option B:
+                        // assign user-specified outer cutoffs to the three stored pair slots first,
+                        // then reinterpret the centered pair slots and derive jk from ij and ik.
+                        vector<bool> disqualified(3,false);
+
+                        vector<double> tmp_smax(3, -1.0);
+                        tmp_smax[ get_index_if(trip_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
+                        tmp_smax[ get_index_if(trip_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
+                        tmp_smax[ get_index_if(trip_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
+
+                        // Reorder into atom-centered convention:
+                        // slot 0 = ij, slot 1 = ik, slot 2 = jk = ij + ik
+                        chimes_3b_cutoff[tmp_int][1][0] = tmp_smax[0];
+                        chimes_3b_cutoff[tmp_int][1][1] = tmp_smax[1];
+                        chimes_3b_cutoff[tmp_int][1][2] = chimes_3b_cutoff[tmp_int][1][0] + chimes_3b_cutoff[tmp_int][1][1];
                     }
                 }
                 
@@ -1375,21 +1407,47 @@ void chimesFF::read_parameters(string paramfile)
     
             // Set the default inner/outer cutoffs to the corresponding 2-body value                    
 
+            // Set the default inner/outer cutoffs using the atom-centered convention.
+            // Atom ordering in the quadruplet is:
+            //   atom 0 = center
+            //   atom 1 = neighbor j
+            //   atom 2 = neighbor k
+            //   atom 3 = neighbor l
+            //
+            // Pair slot ordering is:
+            //   0 -> ij
+            //   1 -> ik
+            //   2 -> il
+            //   3 -> jk
+            //   4 -> jl
+            //   5 -> kl
+            //
+            // Outer cutoffs for non-center pairs are derived:
+            //   S_MAXIM(jk) = S_MAXIM(ij) + S_MAXIM(ik)
+            //   S_MAXIM(jl) = S_MAXIM(ij) + S_MAXIM(il)
+            //   S_MAXIM(kl) = S_MAXIM(ik) + S_MAXIM(il)
+
             chimes_4b_cutoff[i].resize(2);            
 
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_4][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_5][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_6][0]);              
-            
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_1][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_2][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);          
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_4][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_5][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_6][1]);                                              
+            // Inner cutoffs
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);   // ij
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);   // ik
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);   // il
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_4][0]);   // jk
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_5][0]);   // jl
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_6][0]);   // kl
+
+            // Outer cutoffs
+            double smax_ij = chimes_2b_cutoff[pairtyp_1][1];
+            double smax_ik = chimes_2b_cutoff[pairtyp_2][1];
+            double smax_il = chimes_2b_cutoff[pairtyp_3][1];
+
+            chimes_4b_cutoff[i][1].push_back(smax_ij);               // ij
+            chimes_4b_cutoff[i][1].push_back(smax_ik);               // ik
+            chimes_4b_cutoff[i][1].push_back(smax_il);               // il
+            chimes_4b_cutoff[i][1].push_back(smax_ij + smax_ik);     // jk = ij + ik
+            chimes_4b_cutoff[i][1].push_back(smax_ij + smax_il);     // jl = ij + il
+            chimes_4b_cutoff[i][1].push_back(smax_ik + smax_il);     // kl = ik + il                                       
         }
         
         param_file.seekg(0);
@@ -1418,29 +1476,34 @@ void chimesFF::read_parameters(string paramfile)
                     cutval = stod(tmp_str_items[4]);
                                         
                     for(int i=0; i<nquads; i++)
-                    {                
-                        chimes_4b_cutoff[i][1][0] = cutval;
-                        chimes_4b_cutoff[i][1][1] = cutval;
-                        chimes_4b_cutoff[i][1][2] = cutval;
-                        chimes_4b_cutoff[i][1][3] = cutval;
-                        chimes_4b_cutoff[i][1][4] = cutval;
-                        chimes_4b_cutoff[i][1][5] = cutval;                                                      
+                    {
+                        // Center-neighbor outer cutoffs
+                        chimes_4b_cutoff[i][1][0] = cutval;   // ij
+                        chimes_4b_cutoff[i][1][1] = cutval;   // ik
+                        chimes_4b_cutoff[i][1][2] = cutval;   // il
+
+                        // Derived non-center outer cutoffs
+                        chimes_4b_cutoff[i][1][3] = chimes_4b_cutoff[i][1][0] + chimes_4b_cutoff[i][1][1]; // jk
+                        chimes_4b_cutoff[i][1][4] = chimes_4b_cutoff[i][1][0] + chimes_4b_cutoff[i][1][2]; // jl
+                        chimes_4b_cutoff[i][1][5] = chimes_4b_cutoff[i][1][1] + chimes_4b_cutoff[i][1][2]; // kl
                     }
                 }
-                else
+            else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(6);
                     vector<double> cutoffval(6);
 
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
                         split_line(line, tmp_str_items);
-                        
-                        tmp_int = atom_idx_quad_map[distance(atom_typ_quad_map.begin(), find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]))];
+
+                        tmp_int = atom_idx_quad_map[
+                            distance(atom_typ_quad_map.begin(),
+                                     find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]))
+                        ];
 
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
@@ -1448,23 +1511,38 @@ void chimesFF::read_parameters(string paramfile)
                         pair_name[3] = tmp_str_items[4];
                         pair_name[4] = tmp_str_items[5];
                         pair_name[5] = tmp_str_items[6];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[7 ]);
                         cutoffval[1] = stod(tmp_str_items[8 ]);
                         cutoffval[2] = stod(tmp_str_items[9 ]);
                         cutoffval[3] = stod(tmp_str_items[10]);
                         cutoffval[4] = stod(tmp_str_items[11]);
                         cutoffval[5] = stod(tmp_str_items[12]);
-                        
-                        vector<bool>   disqualified(6,false);
-                        
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];    
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[3], disqualified) ] = cutoffval[3];
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[4], disqualified) ] = cutoffval[4];
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[5], disqualified) ] = cutoffval[5];
-					}
+
+                        // Option B:
+                        // assign user-specified values into temporary slots,
+                        // then enforce the atom-centered convention:
+                        //   0=ij, 1=ik, 2=il, 3=jk=ij+ik, 4=jl=ij+il, 5=kl=ik+il
+                        vector<bool> disqualified(6,false);
+
+                        vector<double> tmp_smax(6, -1.0);
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[3], disqualified) ] = cutoffval[3];
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[4], disqualified) ] = cutoffval[4];
+                        tmp_smax[ get_index_if(quad_params_pair_typs[tmp_int], pair_name[5], disqualified) ] = cutoffval[5];
+
+                        // Center-neighbor outer cutoffs
+                        chimes_4b_cutoff[tmp_int][1][0] = tmp_smax[0];  // ij
+                        chimes_4b_cutoff[tmp_int][1][1] = tmp_smax[1];  // ik
+                        chimes_4b_cutoff[tmp_int][1][2] = tmp_smax[2];  // il
+
+                        // Derived non-center outer cutoffs
+                        chimes_4b_cutoff[tmp_int][1][3] = chimes_4b_cutoff[tmp_int][1][0] + chimes_4b_cutoff[tmp_int][1][1]; // jk
+                        chimes_4b_cutoff[tmp_int][1][4] = chimes_4b_cutoff[tmp_int][1][0] + chimes_4b_cutoff[tmp_int][1][2]; // jl
+                        chimes_4b_cutoff[tmp_int][1][5] = chimes_4b_cutoff[tmp_int][1][1] + chimes_4b_cutoff[tmp_int][1][2]; // kl
+                    }
                 }
                 
                 for(int i=0; i<nquads; i++)
@@ -2007,9 +2085,7 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     if (dx[1] >= cutoff_1)    // ik
         return;    
      double cutoff_2  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[2]];
-     double cutoff_02 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[2]];
-    if (dx[2] >= cutoff_2)    // jk
-        return;    
+     double cutoff_02 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[2]];  
 #ifdef FINGERPRINT
     if (fingerprint) {
         // Most efficient version - construct in-place with emplace_back
@@ -2048,12 +2124,12 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     get_fcut(dx[0], cutoff_0, fcut[0], fcutderiv[0]);
     get_fcut(dx[1], cutoff_1, fcut[1], fcutderiv[1]);
     get_fcut(dx[2], cutoff_2, fcut[2], fcutderiv[2]);
-    double fcut_all =  fcut[0] * fcut[1] * fcut[2] ;
+    double fcut_all =  fcut[0] * fcut[1] ;
 
     // Product of 2 fcuts divided by dx. Index i = product of all fcuts except i.
     double fcut_2[npairs] ;
-    fcut_2[0] = fcut[1] * fcut[2] / dx[0] ;
-    fcut_2[1] = fcut[0] * fcut[2] / dx[1] ;
+    fcut_2[0] = fcut[1] / dx[0] ;
+    fcut_2[1] = fcut[0] / dx[1] ;
     fcut_2[2] = fcut[0] * fcut[1] / dx[2] ;
 
     // Start the force/stress/energy calculation
@@ -2077,7 +2153,7 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
 
         deriv[0] = fcut[0] * Tnd_ij[ powers[0] ] + fcutderiv[0] * Tn_ij[ powers[0] ];
         deriv[1] = fcut[1] * Tnd_ik[ powers[1] ] + fcutderiv[1] * Tn_ik[ powers[1] ];
-        deriv[2] = fcut[2] * Tnd_jk[ powers[2] ] + fcutderiv[2] * Tn_jk[ powers[2] ];
+        deriv[2] = Tnd_jk[ powers[2] ];
 
         force_scalar[0]  = coeff * deriv[0] * fcut_2[0] * Tn_ik[powers[1]]  * Tn_jk[powers[2]] ;
         force_scalar[1]  = coeff * deriv[1] * fcut_2[1] * Tn_ij[powers[0]]  * Tn_jk[powers[2]] ;
@@ -2588,16 +2664,13 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         return;
      double cutoff_3  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[3]];
      double cutoff_03 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[3]];
-    if (dx[3] >= cutoff_3)    // jk
-        return;    
+ 
      double cutoff_4  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[4]];
      double cutoff_04 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[4]];
-    if (dx[4] >= cutoff_4)    // jl
-        return;    
+  
      double cutoff_5  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[5]];
      double cutoff_05 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[5]];
-    if (dx[5] >= cutoff_5)    // kl
-        return;
+
 
 
 #ifdef FINGERPRINT
@@ -2652,16 +2725,16 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     get_fcut(dx[5], cutoff_5, fcut[5], fcutderiv[5]);
 
     // Product of all 6 fcuts.
-    double fcut_all = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] * fcut[5]  ;
+    double fcut_all = fcut[0] * fcut[1] * fcut[2]  ;
 
     // Product of 5 fcuts divided by dx.
     double fcut_5[npairs] ;
-    fcut_5[0] = fcut[1] * fcut[2] * fcut[3] * fcut[4] * fcut[5] / dx[0] ;
-    fcut_5[1] = fcut[0] * fcut[2] * fcut[3] * fcut[4] * fcut[5] / dx[1] ;
-    fcut_5[2] = fcut[0] * fcut[1] * fcut[3] * fcut[4] * fcut[5] / dx[2] ;
-    fcut_5[3] = fcut[0] * fcut[1] * fcut[2] * fcut[4] * fcut[5] / dx[3] ;
-    fcut_5[4] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[5] / dx[4] ;
-    fcut_5[5] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] / dx[5] ;
+    fcut_5[0] = fcut[1] * fcut[2] / dx[0] ;
+    fcut_5[1] = fcut[0] * fcut[2] / dx[1] ;
+    fcut_5[2] = fcut[0] * fcut[1] / dx[2] ;
+    fcut_5[3] = fcut[0] * fcut[1] * fcut[2] / dx[3] ;
+    fcut_5[4] = fcut[0] * fcut[1] * fcut[2] / dx[4] ;
+    fcut_5[5] = fcut[0] * fcut[1] * fcut[2] / dx[5] ;
     
     // Start the force/stress/energy calculation
 
@@ -2692,9 +2765,9 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         deriv[0] = fcut[0] * Tnd_ij[ powers[0] ] + fcutderiv[0] * Tn_ij[ powers[0] ];
         deriv[1] = fcut[1] * Tnd_ik[ powers[1] ] + fcutderiv[1] * Tn_ik[ powers[1] ];
         deriv[2] = fcut[2] * Tnd_il[ powers[2] ] + fcutderiv[2] * Tn_il[ powers[2] ];
-        deriv[3] = fcut[3] * Tnd_jk[ powers[3] ] + fcutderiv[3] * Tn_jk[ powers[3] ];
-        deriv[4] = fcut[4] * Tnd_jl[ powers[4] ] + fcutderiv[4] * Tn_jl[ powers[4] ];
-        deriv[5] = fcut[5] * Tnd_kl[ powers[5] ] + fcutderiv[5] * Tn_kl[ powers[5] ];        
+        deriv[3] = Tnd_jk[ powers[3] ];
+        deriv[4] = Tnd_jl[ powers[4] ];
+        deriv[5] = Tnd_kl[ powers[5] ];        
 
         force_scalar[0]  = coeff * deriv[0] * fcut_5[0] * Tn_ik[powers[1]]  * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5 ;
         force_scalar[1]  = coeff * deriv[1] * fcut_5[1] * Tn_ij[powers[0]]  * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5 ;
@@ -2916,29 +2989,38 @@ double chimesFF::max_cutoff_2B(bool silent)
 
 double chimesFF::max_cutoff_3B(bool silent)
 {
-    
     if (poly_orders[1] == 0)
         return 0.0;
-    
-    double max = max_cutoff(chimes_3b_cutoff.size(), chimes_3b_cutoff);
-    
-    if ((rank == 0)&&(!silent))    
-        cout << "chimesFF: " << "\t" << "Setting 3-body max cutoff to: " << max << endl;
-    
+
+    double max = 0.0;
+    for (int i = 0; i < chimes_3b_cutoff.size(); i++)
+    {
+        max = std::max(max, chimes_3b_cutoff[i][1][0]); // ij
+        max = std::max(max, chimes_3b_cutoff[i][1][1]); // ik
+    }
+
+    if ((rank == 0) && (!silent))
+        cout << "chimesFF: \tSetting centered 3-body max cutoff to: " << max << endl;
+
     return max;
-    
 }
 
 double chimesFF::max_cutoff_4B(bool silent)
 {
     if (poly_orders[2] == 0)
         return 0.0;
-    
-    double max =  max_cutoff(chimes_4b_cutoff.size(), chimes_4b_cutoff);
-        
-    if ((rank == 0)&&(!silent))    
-        cout << "chimesFF: " << "\t" << "Setting 4-body max cutoff to: " << max << endl;
-    
+
+    double max = 0.0;
+    for (int i = 0; i < chimes_4b_cutoff.size(); i++)
+    {
+        max = std::max(max, chimes_4b_cutoff[i][1][0]); // ij
+        max = std::max(max, chimes_4b_cutoff[i][1][1]); // ik
+        max = std::max(max, chimes_4b_cutoff[i][1][2]); // il
+    }
+
+    if ((rank == 0) && (!silent))
+        cout << "chimesFF: \tSetting centered 4-body max cutoff to: " << max << endl;
+
     return max;
 }
 
@@ -2956,126 +3038,147 @@ int chimesFF::get_atom_pair_index(int pair_id)
 }
 
 void chimesFF::build_pair_int_quad_map()
+// Build the pair maps for all possible quadruplets using an atom-centered convention.
+// Atom 0 of the quadruplet is the center atom.
+// Pair slot ordering is:
+//   0 -> (0,1) = ij
+//   1 -> (0,2) = ik
+//   2 -> (0,3) = il
+//   3 -> (1,2) = jk
+//   4 -> (1,3) = jl
+//   5 -> (2,3) = kl
 {
-    // Build the pair maps for all possible quads.  Moved build_atom_and_pair_mappers out of the compute_XX routines
-    // to support GPU environment without string operations.
-    // This must be called prior to force evaluation.
+    const int natoms = 4;
+    const int npairs = natoms * (natoms-1) / 2;
+    vector<int> pair_map(npairs);
 
-    const int natoms = 4 ;
-    const int npairs = natoms * (natoms-1) / 2 ;
-    vector<int> pair_map(npairs) ;
-    vector<int> typ_idxs(natoms) ;
+    if ( atom_int_quad_map.size() == 0 ) return; // No quadruplets
 
-    if ( atom_int_quad_map.size() == 0 ) return ; // No quads !
-    
-    pair_int_quad_map.resize(natmtyps*natmtyps*natmtyps*natmtyps) ;
+    pair_int_quad_map.resize(natmtyps * natmtyps * natmtyps * natmtyps);
 
-    
     for ( int i = 0 ; i < natmtyps ; i++ )
     {
-        typ_idxs[0] = i ;
         for ( int j = 0 ; j < natmtyps ; j++ )
         {
-            typ_idxs[1] = j ;
             for ( int k = 0 ; k < natmtyps ; k++ )
             {
-                typ_idxs[2] = k ;
                 for ( int l = 0 ; l < natmtyps ; l++ )
                 {
-                    typ_idxs[3] = l ;
-                    int idx = i*natmtyps*natmtyps*natmtyps + j*natmtyps*natmtyps + k*natmtyps + l ;
+                    int idx = i*natmtyps*natmtyps*natmtyps
+                            + j*natmtyps*natmtyps
+                            + k*natmtyps
+                            + l;
+
                     int quadidx = atom_int_quad_map[idx];
 
                     // Skip excluded interactions
                     if (quadidx < 0)
                         continue;
 
-                    build_atom_and_pair_mappers(natoms, npairs, typ_idxs, quad_params_pair_typs[quadidx], pair_map);
+                    // Construct actual positional pair names
+                    string pair01 = atom_int_prpr_map[i*natmtyps + j];
+                    string pair02 = atom_int_prpr_map[i*natmtyps + k];
+                    string pair03 = atom_int_prpr_map[i*natmtyps + l];
+                    string pair12 = atom_int_prpr_map[j*natmtyps + k];
+                    string pair13 = atom_int_prpr_map[j*natmtyps + l];
+                    string pair23 = atom_int_prpr_map[k*natmtyps + l];
 
-                    // Save for re-use in force evaluators.
-                    if ( quadidx >= natmtyps * natmtyps * natmtyps * natmtyps )
-                    {
-                        cout << "Error: quadidx out of range\n" ;
-                        cout << "Quadidx = " << quadidx << endl ;
-                        exit(1) ;
-                    }
+                    // Match them to the stored quadruplet pair ordering, allowing duplicate chemistries.
+                    vector<bool> used(6,false);
 
-                    // Note: The entire vector<> is copied and stored.                  
-                    pair_int_quad_map[idx] = pair_map ;
+                    pair_map[0] = get_index_if(quad_params_pair_typs[quadidx], pair01, used); // ij
+                    pair_map[1] = get_index_if(quad_params_pair_typs[quadidx], pair02, used); // ik
+                    pair_map[2] = get_index_if(quad_params_pair_typs[quadidx], pair03, used); // il
+                    pair_map[3] = get_index_if(quad_params_pair_typs[quadidx], pair12, used); // jk
+                    pair_map[4] = get_index_if(quad_params_pair_typs[quadidx], pair13, used); // jl
+                    pair_map[5] = get_index_if(quad_params_pair_typs[quadidx], pair23, used); // kl
+
+                    pair_int_quad_map[idx] = pair_map;
                 }
             }
         }
     }
+
     for ( int i = 0 ; i < pair_int_quad_map.size() ; i++ )
     {
         if ( pair_int_quad_map[i].size() == 0 )
         {
-		if (atom_int_quad_map[i] >= 0)
-			if(rank==0)
-            			cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl ;
-		else
-			if(rank==0)
-				cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl ;
-        }
-    }   
-}
-
-void chimesFF::build_pair_int_trip_map()
-// Build the pair maps for all possible triplets.  Moved build_atom_and_pair_mappers out of the compute_XX routines
-// to support GPU environment without string operations.
-// This must be called prior to force evaluation.
-{
-    const int natoms = 3 ;
-    const int npairs = natoms * (natoms-1) / 2 ;
-    vector<int> pair_map(npairs) ;
-    vector<int> typ_idxs(natoms) ;
-
-    if ( atom_int_trip_map.size() == 0 ) return ; // No trips !
-    
-    pair_int_trip_map.resize(natmtyps*natmtyps*natmtyps) ;
-    
-    for ( int i = 0 ; i < natmtyps ; i++ )
-    {
-        typ_idxs[0] = i ;
-        for ( int j = 0 ; j < natmtyps ; j++ )
-        {
-            typ_idxs[1] = j ;
-            for ( int k = 0 ; k < natmtyps ; k++ )
+            if (atom_int_quad_map[i] >= 0)
             {
-                typ_idxs[2] = k ;
-                int tripidx = atom_int_trip_map[i*natmtyps*natmtyps + j*natmtyps + k];
-		
-		// Skip excluded interactions
-		if (tripidx < 0)
-			continue;
-
-                build_atom_and_pair_mappers(natoms, npairs, typ_idxs, trip_params_pair_typs[tripidx], pair_map);
-                    
-                // Save for re-use in force evaluators.
-                if ( tripidx >= natmtyps * natmtyps * natmtyps * natmtyps )
-                {
-                    cout << "Error: tripidx out of range\n" ;
-                    cout << "Tripidx = " << tripidx << endl ;
-                    exit(1) ;
-                }
-
-                // Note: The entire vector<> is copied and stored.
-                pair_int_trip_map[i*natmtyps*natmtyps + j*natmtyps + k] = pair_map ;
+                if(rank==0)
+                    cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl;
+            }
+            else
+            {
+                if(rank==0)
+                    cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl;
             }
         }
     }
+}
+
+void chimesFF::build_pair_int_trip_map()
+// Build the pair maps for all possible triplets using an atom-centered convention.
+// Atom 0 of the triplet is the center atom.
+// Pair slot ordering is:
+//   0 -> (0,1) = ij
+//   1 -> (0,2) = ik
+//   2 -> (1,2) = jk
+{
+    const int natoms = 3;
+    const int npairs = natoms * (natoms-1) / 2;
+    vector<int> pair_map(npairs);
+
+    if ( atom_int_trip_map.size() == 0 ) return; // No triplets
+
+    pair_int_trip_map.resize(natmtyps * natmtyps * natmtyps);
+
+    for ( int i = 0 ; i < natmtyps ; i++ )
+    {
+        for ( int j = 0 ; j < natmtyps ; j++ )
+        {
+            for ( int k = 0 ; k < natmtyps ; k++ )
+            {
+                int idx = i*natmtyps*natmtyps + j*natmtyps + k;
+                int tripidx = atom_int_trip_map[idx];
+
+                // Skip excluded interactions
+                if (tripidx < 0)
+                    continue;
+
+                // Construct the actual pair-type names for the positional pairs:
+                // (0,1), (0,2), (1,2)
+                string pair01 = atom_int_prpr_map[i*natmtyps + j];
+                string pair02 = atom_int_prpr_map[i*natmtyps + k];
+                string pair12 = atom_int_prpr_map[j*natmtyps + k];
+
+                // Match them to the stored triplet pair ordering, allowing duplicate chemistries.
+                vector<bool> used(3,false);
+
+                pair_map[0] = get_index_if(trip_params_pair_typs[tripidx], pair01, used); // ij
+                pair_map[1] = get_index_if(trip_params_pair_typs[tripidx], pair02, used); // ik
+                pair_map[2] = get_index_if(trip_params_pair_typs[tripidx], pair12, used); // jk
+
+                pair_int_trip_map[idx] = pair_map;
+            }
+        }
+    }
+
     for ( int i = 0 ; i < pair_int_trip_map.size() ; i++ )
     {
         if ( pair_int_trip_map[i].size() == 0 )
         {
-		if (atom_int_trip_map[i] >= 0)
-			if(rank==0)
-            			cout << "Error: Did not initialize pair_int_trip_map for entry " << i << endl ;
-		else
-			if(rank==0)
-				cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl ;
+            if (atom_int_trip_map[i] >= 0)
+            {
+                if(rank==0)
+                    cout << "Error: Did not initialize pair_int_trip_map for entry " << i << endl;
+            }
+            else
+            {
+                if(rank==0)
+                    cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl;
+            }
         }
     }
-    
 }
 
