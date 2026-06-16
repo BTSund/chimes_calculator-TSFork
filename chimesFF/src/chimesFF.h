@@ -226,6 +226,67 @@ public:
     double get_tab_3B(int tripidx, const std::string& pairtyp_ij, const std::string& pairtyp_ik, const std::string& pairtyp_jk,  double rij, double rik, double rjk, double (&force_scalar)[3]);
     #endif
     
+
+#ifdef TABULATION
+    bool tabulate_4B_coeff = false;
+
+    // One table per quad type
+    std::vector<std::vector<double>> tab_rA_4B;
+    std::vector<std::vector<double>> tab_rB_4B;
+    std::vector<std::vector<double>> tab_rC_4B;
+
+    // [quadidx][row][coeff]
+    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_E;
+    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dA;
+    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dB;
+    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dC;
+
+    // Metadata
+    std::vector<std::array<int,3>> tab_4b_contracted_dims;
+    std::vector<std::array<int,3>> tab_4b_retained_dims;
+
+    // [quadidx][coeff][3 retained powers]
+    std::vector<std::vector<std::array<int,3>>> tab_4b_coeff_powers;
+
+    std::vector<int> tab_4b_ncoeff;
+    std::vector<int> tab_4b_ngrid;
+#endif
+
+#ifdef TABULATION
+    void read_4B_coeff_meta(std::string meta_file, int quadidx);
+    void read_4B_coeff_tab (std::string data_file, int quadidx);
+
+    void interpolateTrilinearCoeff4B(
+        int quadidx,
+        double ra, double rb, double rc,
+        std::vector<double> & coeffE,
+        std::vector<double> & coeffdA,
+        std::vector<double> & coeffdB,
+        std::vector<double> & coeffdC
+    );
+
+    void compute_4B_tab_coeff(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_tab_coeff(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp,
+        std::vector<double> & force_scalar_in
+    );
+#endif
+
 private:
         
     string            xform_style;    //  Morse, direct, inverse, etc...

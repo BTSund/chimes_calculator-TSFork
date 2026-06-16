@@ -807,7 +807,12 @@ void PairCHIMES::compute(int eflag, int vflag)
 				chimes_calculator.compute_4B( dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp, tmp_force_scalar_4b, tmp_dist_4b, tmp_FP && valid_order);
 			} else {
 			#endif
-				chimes_calculator.compute_4B( dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp);
+				#ifdef TABULATION
+            if (chimes_calculator.tabulate_4B_coeff)
+                chimes_calculator.compute_4B_tab_coeff(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp);
+            else
+#endif
+                chimes_calculator.compute_4B(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp);
 			#ifdef FINGERPRINT
 			}
 			#endif

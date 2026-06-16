@@ -15,6 +15,7 @@
 #include<algorithm>
 #include<cmath>
 #include<map>
+#include<tuple>
 
 using namespace std;
 
@@ -348,6 +349,227 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
     }
 
     tab_files.close();
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
+{
+    ifstream in(meta_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B coefficient metadata file: " << meta_file << endl;
+        exit(0);
+    }
+
+    string line;
+    vector<string> items;
+
+    int ncoeff = -1;
+    array<int,3> contracted_dims = {-1,-1,-1};
+    array<int,3> retained_dims   = {-1,-1,-1};
+    vector<array<int,3>> coeff_powers;
+
+    bool reading_coeff_powers = false;
+
+    while (getline(in, line))
+    {
+        if (line.size() == 0) continue;
+
+        int n = split_line(line, items);
+        if (n == 0) continue;
+
+        if (items[0] == "contracted_dims")
+        {
+            if (n != 4)
+            {
+                cout << "ERROR: contracted_dims line must have 4 entries in " << meta_file << endl;
+                exit(0);
+            }
+            contracted_dims[0] = stoi(items[1]);
+            contracted_dims[1] = stoi(items[2]);
+            contracted_dims[2] = stoi(items[3]);
+        }
+        else if (items[0] == "retained_dims")
+        {
+            if (n != 4)
+            {
+                cout << "ERROR: retained_dims line must have 4 entries in " << meta_file << endl;
+                exit(0);
+            }
+            retained_dims[0] = stoi(items[1]);
+            retained_dims[1] = stoi(items[2]);
+            retained_dims[2] = stoi(items[3]);
+        }
+        else if (items[0] == "ncoeff")
+        {
+            if (n != 2)
+            {
+                cout << "ERROR: ncoeff line must have 2 entries in " << meta_file << endl;
+                exit(0);
+            }
+            ncoeff = stoi(items[1]);
+        }
+        else if (items[0] == "coeff_powers")
+        {
+            reading_coeff_powers = true;
+        }
+        else if (reading_coeff_powers)
+        {
+            if (n != 3)
+            {
+                cout << "ERROR: coeff_powers entry must have 3 integers in " << meta_file << endl;
+                cout << "Line: " << line << endl;
+                exit(0);
+            }
+            array<int,3> p = {stoi(items[0]), stoi(items[1]), stoi(items[2])};
+            coeff_powers.push_back(p);
+        }
+    }
+
+    in.close();
+
+    if (ncoeff < 0)
+    {
+        cout << "ERROR: Did not read ncoeff from " << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)coeff_powers.size() != ncoeff)
+    {
+        cout << "ERROR: coeff_powers count does not match ncoeff in " << meta_file << endl;
+        cout << "ncoeff = " << ncoeff << " coeff_powers.size() = " << coeff_powers.size() << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_contracted_dims.size() <= quadidx)
+    {
+        tab_4b_contracted_dims.resize(quadidx+1);
+        tab_4b_retained_dims.resize(quadidx+1);
+        tab_4b_coeff_powers.resize(quadidx+1);
+        tab_4b_ncoeff.resize(quadidx+1);
+        tab_4b_ngrid.resize(quadidx+1);
+    }
+
+    tab_4b_contracted_dims[quadidx] = contracted_dims;
+    tab_4b_retained_dims[quadidx]   = retained_dims;
+    tab_4b_coeff_powers[quadidx]    = coeff_powers;
+    tab_4b_ncoeff[quadidx]          = ncoeff;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B coeff metadata for quad type " << quadidx << endl;
+        cout << "chimesFF: \tcontracted dims: "
+             << contracted_dims[0] << " " << contracted_dims[1] << " " << contracted_dims[2] << endl;
+        cout << "chimesFF: \tretained dims:   "
+             << retained_dims[0] << " " << retained_dims[1] << " " << retained_dims[2] << endl;
+        cout << "chimesFF: \tncoeff: " << ncoeff << endl;
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_coeff_tab(string data_file, int quadidx)
+{
+    ifstream in(data_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B coefficient table file: " << data_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_ncoeff.size() <= quadidx || tab_4b_ncoeff[quadidx] <= 0)
+    {
+        cout << "ERROR: Must read 4B coeff metadata before reading coefficient table for quad type "
+             << quadidx << endl;
+        exit(0);
+    }
+
+    int ncoeff = tab_4b_ncoeff[quadidx];
+
+    string line;
+    vector<string> items;
+
+    line = get_next_line(in);
+    int nrows = stoi(line);
+
+    if ((int)tab_rA_4B.size() <= quadidx)
+    {
+        tab_rA_4B.resize(quadidx+1);
+        tab_rB_4B.resize(quadidx+1);
+        tab_rC_4B.resize(quadidx+1);
+
+        tab_coeffs_4B_E.resize(quadidx+1);
+        tab_coeffs_4B_dA.resize(quadidx+1);
+        tab_coeffs_4B_dB.resize(quadidx+1);
+        tab_coeffs_4B_dC.resize(quadidx+1);
+    }
+
+    tab_rA_4B[quadidx].reserve(nrows);
+    tab_rB_4B[quadidx].reserve(nrows);
+    tab_rC_4B[quadidx].reserve(nrows);
+
+    tab_coeffs_4B_E [quadidx].reserve(nrows);
+    tab_coeffs_4B_dA[quadidx].reserve(nrows);
+    tab_coeffs_4B_dB[quadidx].reserve(nrows);
+    tab_coeffs_4B_dC[quadidx].reserve(nrows);
+
+    for (int i=0; i<nrows; i++)
+    {
+        line = get_next_line(in);
+        int n = split_line(line, items);
+
+        if (n != 3 + 4*ncoeff)
+        {
+            cout << "ERROR: Expected " << (3 + 4*ncoeff)
+                 << " entries in 4B coeff row, got " << n << endl;
+            cout << "Line: " << line << endl;
+            exit(0);
+        }
+
+        tab_rA_4B[quadidx].push_back(stod(items[0]));
+        tab_rB_4B[quadidx].push_back(stod(items[1]));
+        tab_rC_4B[quadidx].push_back(stod(items[2]));
+
+        vector<double> coeffE(ncoeff), coeffdA(ncoeff), coeffdB(ncoeff), coeffdC(ncoeff);
+
+        int offE  = 3;
+        int offdA = 3 + ncoeff;
+        int offdB = 3 + 2*ncoeff;
+        int offdC = 3 + 3*ncoeff;
+
+        for (int c=0; c<ncoeff; c++)
+        {
+            coeffE [c] = stod(items[offE  + c]);
+            coeffdA[c] = stod(items[offdA + c]);
+            coeffdB[c] = stod(items[offdB + c]);
+            coeffdC[c] = stod(items[offdC + c]);
+        }
+
+        tab_coeffs_4B_E [quadidx].push_back(coeffE);
+        tab_coeffs_4B_dA[quadidx].push_back(coeffdA);
+        tab_coeffs_4B_dB[quadidx].push_back(coeffdB);
+        tab_coeffs_4B_dC[quadidx].push_back(coeffdC);
+    }
+
+    in.close();
+
+    int ngrid = round(cbrt((double)nrows));
+    if (ngrid*ngrid*ngrid != nrows)
+    {
+        cout << "ERROR: 4B coeff table row count is not a perfect cube: " << nrows << endl;
+        exit(0);
+    }
+    tab_4b_ngrid[quadidx] = ngrid;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B coeff table for quad type " << quadidx << endl;
+        cout << "chimesFF: \tnrows  = " << nrows << endl;
+        cout << "chimesFF: \tngrid  = " << ngrid << endl;
+        cout << "chimesFF: \tncoeff = " << ncoeff << endl;
+        cout << "chimesFF: \ttable blocks = E dA dB dC" << endl;
+    }
 }
 #endif
 
@@ -1183,6 +1405,41 @@ void chimesFF::read_parameters(string paramfile)
     
         while (!found_end)
         {
+            
+        #ifdef TABULATION
+            if(line.find("4B COEFF TABLES:") != string::npos)
+            {
+                split_line(line, tmp_str_items);
+
+                int ntab = stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
+
+                tabulate_4B_coeff = true;
+
+                for (int t=0; t<ntab; t++)
+                {
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 3)
+                    {
+                        cout << "ERROR: Expected line format:" << endl;
+                        cout << "       <quadidx> <datafile> <metafile>" << endl;
+                        cout << "Line: " << line << endl;
+                        exit(0);
+                    }
+
+                    int quadidx = stoi(tmp_str_items[0]);
+                    string datafile = param_file_path + "/" + tmp_str_items[1];
+                    string metafile = param_file_path + "/" + tmp_str_items[2];
+
+                    read_4B_coeff_meta(metafile, quadidx);
+                    read_4B_coeff_tab (datafile, quadidx);
+                }
+            }
+#endif
             line = get_next_line(param_file);
         
 			if(line.find("ENDFILE") != string::npos)
@@ -2338,6 +2595,360 @@ bool custom_comparator(const pair<string, double>& a, const pair<string, double>
     return a.first < b.first; // Otherwise, sort by pair_type in ascending order
 }   
 
+#ifdef TABULATION
+void chimesFF::compute_4B_tab_coeff(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    vector<double> dummy_force_scalar(6);
+    compute_4B_tab_coeff(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::compute_4B_tab_coeff(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp,
+    vector<double> & force_scalar_in
+)
+{
+    const int natoms = 4;
+    const int npairs = 6;
+
+    vector<double> &Tn_ij   = tmp.Tn_ij;
+    vector<double> &Tn_ik   = tmp.Tn_ik;
+    vector<double> &Tn_il   = tmp.Tn_il;
+    vector<double> &Tn_jk   = tmp.Tn_jk;
+    vector<double> &Tn_jl   = tmp.Tn_jl;
+    vector<double> &Tn_kl   = tmp.Tn_kl;
+
+    vector<double> &Tnd_ij  = tmp.Tnd_ij;
+    vector<double> &Tnd_ik  = tmp.Tnd_ik;
+    vector<double> &Tnd_il  = tmp.Tnd_il;
+    vector<double> &Tnd_jk  = tmp.Tnd_jk;
+    vector<double> &Tnd_jl  = tmp.Tnd_jl;
+    vector<double> &Tnd_kl  = tmp.Tnd_kl;
+
+    int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
+            + typ_idxs[1]*natmtyps*natmtyps
+            + typ_idxs[2]*natmtyps
+            + typ_idxs[3];
+
+    int quadidx = atom_int_quad_map[idx];
+    if (quadidx < 0) return;
+
+    vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
+
+    for (int i=0; i<npairs; i++)
+        if (dx[i] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]])
+            return;
+
+    if ((int)tab_4b_ncoeff.size() <= quadidx || tab_4b_ncoeff[quadidx] <= 0)
+    {
+        cout << "ERROR: compute_4B_tab_coeff called but no table loaded for quadidx " << quadidx << endl;
+        exit(0);
+    }
+
+    int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
+    int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
+    int pair_type_3 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[3] ];
+    int pair_type_4 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ];
+    int pair_type_5 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[3] ];
+    int pair_type_6 = atom_int_pair_map[ typ_idxs[2]*natmtyps + typ_idxs[3] ];
+
+    set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[0]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]], poly_orders[2]);
+    set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]], poly_orders[2]);
+    set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[2]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[2]], poly_orders[2]);
+    set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]], poly_orders[2]);
+    set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[4]], poly_orders[2]);
+    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6],
+                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]],
+                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[5]], poly_orders[2]);
+
+    array<double, npairs> fcut, fcutderiv;
+    for (int i=0; i<npairs; i++)
+        get_fcut(dx[i], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]], fcut[i], fcutderiv[i]);
+
+    const auto & contracted_dims = tab_4b_contracted_dims[quadidx];
+    const auto & retained_dims   = tab_4b_retained_dims[quadidx];
+    const auto & coeff_powers    = tab_4b_coeff_powers[quadidx];
+
+    double ra = dx[contracted_dims[0]];
+    double rb = dx[contracted_dims[1]];
+    double rc = dx[contracted_dims[2]];
+
+    vector<double> coeffE, coeffdA, coeffdB, coeffdC;
+    interpolateTrilinearCoeff4B(quadidx, ra, rb, rc, coeffE, coeffdA, coeffdB, coeffdC);
+
+    auto getT  = [&](int dim) -> vector<double>& {
+        if (dim == 0) return Tn_ij;
+        if (dim == 1) return Tn_ik;
+        if (dim == 2) return Tn_il;
+        if (dim == 3) return Tn_jk;
+        if (dim == 4) return Tn_jl;
+        return Tn_kl;
+    };
+
+    auto getTd = [&](int dim) -> vector<double>& {
+        if (dim == 0) return Tnd_ij;
+        if (dim == 1) return Tnd_ik;
+        if (dim == 2) return Tnd_il;
+        if (dim == 3) return Tnd_jk;
+        if (dim == 4) return Tnd_jl;
+        return Tnd_kl;
+    };
+
+    int da = contracted_dims[0];
+    int db = contracted_dims[1];
+    int dc = contracted_dims[2];
+
+    int du = retained_dims[0];
+    int dv = retained_dims[1];
+    int dw = retained_dims[2];
+
+    double dE_pair[6] = {0.0,0.0,0.0,0.0,0.0,0.0};
+
+    int ncoeff = tab_4b_ncoeff[quadidx];
+
+    for (int q=0; q<ncoeff; q++)
+    {
+        int pu = coeff_powers[q][0];
+        int pv = coeff_powers[q][1];
+        int pw = coeff_powers[q][2];
+
+        double Tu  = getT(du )[pu];
+        double Tv  = getT(dv )[pv];
+        double Tw  = getT(dw )[pw];
+
+        double Tud = getTd(du)[pu];
+        double Tvd = getTd(dv)[pv];
+        double Twd = getTd(dw)[pw];
+
+        double Ru = fcut[du] * Tu;
+        double Rv = fcut[dv] * Tv;
+        double Rw = fcut[dw] * Tw;
+
+        double dRu = fcutderiv[du] * Tu + fcut[du] * Tud;
+        double dRv = fcutderiv[dv] * Tv + fcut[dv] * Tvd;
+        double dRw = fcutderiv[dw] * Tw + fcut[dw] * Twd;
+
+        double retained_prod = Ru * Rv * Rw;
+
+        energy += coeffE[q] * retained_prod;
+
+        dE_pair[da] += coeffdA[q] * retained_prod;
+        dE_pair[db] += coeffdB[q] * retained_prod;
+        dE_pair[dc] += coeffdC[q] * retained_prod;
+
+        dE_pair[du] += coeffE[q] * dRu * Rv  * Rw;
+        dE_pair[dv] += coeffE[q] * Ru  * dRv * Rw;
+        dE_pair[dw] += coeffE[q] * Ru  * Rv  * dRw;
+    }
+
+    double force_scalar[6];
+    for (int p=0; p<6; p++)
+        force_scalar[p] = dE_pair[p] / dx[p];
+
+#ifdef USE_DISTANCE_TENSOR
+    double dr2[CHDIM*CHDIM*npairs*npairs];
+    init_distance_tensor(dr2, dr, npairs);
+#endif
+
+    // ij
+    force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[0] * dr[0*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[0] * dr[0*CHDIM+2];
+    force[1*CHDIM+0] -= force_scalar[0] * dr[0*CHDIM+0];
+    force[1*CHDIM+1] -= force_scalar[0] * dr[0*CHDIM+1];
+    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];
+
+    // ik
+    force[0*CHDIM+0] += force_scalar[1] * dr[1*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[1] * dr[1*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[1] * dr[1*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[1] * dr[1*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[1] * dr[1*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];
+
+    // il
+    force[0*CHDIM+0] += force_scalar[2] * dr[2*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[2] * dr[2*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[2] * dr[2*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[2] * dr[2*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[2] * dr[2*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];
+
+    // jk
+    force[1*CHDIM+0] += force_scalar[3] * dr[3*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[3] * dr[3*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[3] * dr[3*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[3] * dr[3*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[3] * dr[3*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[3] * dr[3*CHDIM+2];
+
+    // jl
+    force[1*CHDIM+0] += force_scalar[4] * dr[4*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[4] * dr[4*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[4] * dr[4*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[4] * dr[4*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[4] * dr[4*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[4] * dr[4*CHDIM+2];
+
+    // kl
+    force[2*CHDIM+0] += force_scalar[5] * dr[5*CHDIM+0];
+    force[2*CHDIM+1] += force_scalar[5] * dr[5*CHDIM+1];
+    force[2*CHDIM+2] += force_scalar[5] * dr[5*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[5] * dr[5*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[5] * dr[5*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[5] * dr[5*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr2_4B(dr2,p,0,p,0);
+        stress[1] -= force_scalar[p] * dr2_4B(dr2,p,0,p,1);
+        stress[2] -= force_scalar[p] * dr2_4B(dr2,p,0,p,2);
+        stress[3] -= force_scalar[p] * dr2_4B(dr2,p,1,p,1);
+        stress[4] -= force_scalar[p] * dr2_4B(dr2,p,1,p,2);
+        stress[5] -= force_scalar[p] * dr2_4B(dr2,p,2,p,2);
+    }
+#else
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+0];
+        stress[1] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+1];
+        stress[2] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+2];
+        stress[3] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+1];
+        stress[4] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+2];
+        stress[5] -= force_scalar[p] * dr[p*CHDIM+2] * dr[p*CHDIM+2];
+    }
+#endif
+
+    for (int i=0; i<6; i++)
+        force_scalar_in[i] = force_scalar[i];
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::interpolateTrilinearCoeff4B(
+    int quadidx,
+    double ra, double rb, double rc,
+    vector<double> & coeffE,
+    vector<double> & coeffdA,
+    vector<double> & coeffdB,
+    vector<double> & coeffdC
+)
+{
+    const auto & rA    = tab_rA_4B[quadidx];
+    const auto & rB    = tab_rB_4B[quadidx];
+    const auto & rC    = tab_rC_4B[quadidx];
+    const auto & valsE = tab_coeffs_4B_E [quadidx];
+    const auto & valsA = tab_coeffs_4B_dA[quadidx];
+    const auto & valsB = tab_coeffs_4B_dB[quadidx];
+    const auto & valsC = tab_coeffs_4B_dC[quadidx];
+
+    int ncoeff = tab_4b_ncoeff[quadidx];
+    int ngrid  = tab_4b_ngrid[quadidx];
+
+    coeffE.resize(ncoeff);
+    coeffdA.resize(ncoeff);
+    coeffdB.resize(ncoeff);
+    coeffdC.resize(ncoeff);
+
+    int strideA = ngrid * ngrid;
+    int strideB = ngrid;
+    int strideC = 1;
+
+    double rA0 = rA[0];
+    double rB0 = rB[0];
+    double rC0 = rC[0];
+
+    double dA = rA[strideA] - rA[0];
+    double dB = rB[strideB] - rB[0];
+    double dC = rC[1]       - rC[0];
+
+    int ia = (int) floor((ra - rA0) / dA);
+    int ib = (int) floor((rb - rB0) / dB);
+    int ic = (int) floor((rc - rC0) / dC);
+
+    if (ia < 0) ia = 0;
+    if (ib < 0) ib = 0;
+    if (ic < 0) ic = 0;
+
+    if (ia > ngrid-2) ia = ngrid-2;
+    if (ib > ngrid-2) ib = ngrid-2;
+    if (ic > ngrid-2) ic = ngrid-2;
+
+    double a0 = rA0 + ia*dA;
+    double b0 = rB0 + ib*dB;
+    double c0 = rC0 + ic*dC;
+
+    double tx = (ra - a0)/dA;
+    double ty = (rb - b0)/dB;
+    double tz = (rc - c0)/dC;
+
+    int i000 = ia*strideA + ib*strideB + ic;
+    int i001 = i000 + 1;
+    int i010 = i000 + strideB;
+    int i011 = i010 + 1;
+    int i100 = i000 + strideA;
+    int i101 = i100 + 1;
+    int i110 = i100 + strideB;
+    int i111 = i110 + 1;
+
+    for (int q=0; q<ncoeff; q++)
+    {
+        auto interp = [&](const vector<vector<double>> & vals) -> double
+        {
+            double c000 = vals[i000][q];
+            double c001 = vals[i001][q];
+            double c010 = vals[i010][q];
+            double c011 = vals[i011][q];
+            double c100 = vals[i100][q];
+            double c101 = vals[i101][q];
+            double c110 = vals[i110][q];
+            double c111 = vals[i111][q];
+
+            double v00 = c000*(1.0-tz) + c001*tz;
+            double v01 = c010*(1.0-tz) + c011*tz;
+            double v10 = c100*(1.0-tz) + c101*tz;
+            double v11 = c110*(1.0-tz) + c111*tz;
+
+            double v0 = v00*(1.0-ty) + v01*ty;
+            double v1 = v10*(1.0-ty) + v11*ty;
+
+            return v0*(1.0-tx) + v1*tx;
+        };
+
+        coeffE [q] = interp(valsE);
+        coeffdA[q] = interp(valsA);
+        coeffdB[q] = interp(valsB);
+        coeffdC[q] = interp(valsC);
+    }
+}
+#endif
+
 // Linear interpolation function
 double linearInterpolate(double x, double x0, double x1, double f0, double f1) 
 {
@@ -2629,7 +3240,7 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3], cutoff_02, cutoff_2, order);
     set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4], cutoff_03, cutoff_3, order);
     set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5], cutoff_04, cutoff_4, order);
-    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], cutoff_05, cutoff_5, order);    
+    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], cutoff_05, cutoff_5, order);  
     
 #ifdef USE_DISTANCE_TENSOR  
     // Tensor product of displacement vectors.
@@ -2650,7 +3261,6 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     get_fcut(dx[3], cutoff_3, fcut[3], fcutderiv[3]);
     get_fcut(dx[4], cutoff_4, fcut[4], fcutderiv[4]);
     get_fcut(dx[5], cutoff_5, fcut[5], fcutderiv[5]);
-
     // Product of all 6 fcuts.
     double fcut_all = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] * fcut[5]  ;
 
@@ -2687,7 +3297,7 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         double Tn_jk_jl    =  Tn_jk[ powers[3] ] * Tn_jl[ powers[4] ] ;
         double Tn_kl_5     =  Tn_kl[ powers[5] ] ;
 
-        energy += coeff * fcut_all * Tn_ij_ik_il * Tn_jk_jl * Tn_kl_5 ;        
+        energy += coeff * fcut_all * Tn_ij_ik_il * Tn_jk_jl * Tn_kl_5 ;      
 
         deriv[0] = fcut[0] * Tnd_ij[ powers[0] ] + fcutderiv[0] * Tn_ij[ powers[0] ];
         deriv[1] = fcut[1] * Tnd_ik[ powers[1] ] + fcutderiv[1] * Tn_ik[ powers[1] ];
@@ -3011,11 +3621,11 @@ void chimesFF::build_pair_int_quad_map()
         if ( pair_int_quad_map[i].size() == 0 )
         {
 		if (atom_int_quad_map[i] >= 0)
-			if(rank==0)
-            			cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl ;
+			if(rank==0){
+            			cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl ;}
 		else
-			if(rank==0)
-				cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl ;
+			{if(rank==0)
+				cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl ;}
         }
     }   
 }
@@ -3069,11 +3679,11 @@ void chimesFF::build_pair_int_trip_map()
         if ( pair_int_trip_map[i].size() == 0 )
         {
 		if (atom_int_trip_map[i] >= 0)
-			if(rank==0)
+			{if(rank==0)
             			cout << "Error: Did not initialize pair_int_trip_map for entry " << i << endl ;
-		else
-			if(rank==0)
-				cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl ;
+            }else
+			{if(rank==0)
+				cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl ;}
         }
     }
     
