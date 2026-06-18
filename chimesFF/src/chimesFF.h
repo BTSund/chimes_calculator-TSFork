@@ -230,39 +230,73 @@ public:
 #ifdef TABULATION
     bool tabulate_4B_coeff = false;
 
-    // One table per quad type
-    std::vector<std::vector<double>> tab_rA_4B;
-    std::vector<std::vector<double>> tab_rB_4B;
-    std::vector<std::vector<double>> tab_rC_4B;
+    // Canonical ordering metadata
+    std::vector<std::vector<std::string>> tab_4b_canonical_pair_types; // [quadidx][6]
+    std::vector<std::vector<int>> tab_4b_canon_to_param;               // [quadidx][6]
 
-    // [quadidx][row][coeff]
-    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_E;
-    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dA;
-    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dB;
-    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_dC;
+    void build_runtime_canonical_maps_4B(
+        int quadidx,
+        const std::vector<int> & mapped_pair_idx,
+        const std::vector<double> & dx,
+        int *canon_to_runtime,
+        int *runtime_to_canon
+    );
+
+    // Contracted grid coordinates:
+    // [quadidx][contracted_dim_local][row]
+    std::vector<std::vector<std::vector<double>>> tab_r_4B;
+
+    // Flattened coefficient blocks:
+    // [quadidx][block][row*ncoeff + coeff]
+    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_blocks_flat;
 
     // Metadata
-    std::vector<std::array<int,3>> tab_4b_contracted_dims;
-    std::vector<std::array<int,3>> tab_4b_retained_dims;
-
-    // [quadidx][coeff][3 retained powers]
-    std::vector<std::vector<std::array<int,3>>> tab_4b_coeff_powers;
+    std::vector<std::vector<int>> tab_4b_contracted_dims;
+    std::vector<std::vector<int>> tab_4b_retained_dims;
+    std::vector<std::vector<std::vector<int>>> tab_4b_coeff_powers;
 
     std::vector<int> tab_4b_ncoeff;
     std::vector<int> tab_4b_ngrid;
+    std::vector<int> tab_4b_ncontracted;
+    std::vector<int> tab_4b_nretained;
+
+    // Precomputed interpolation metadata
+    std::vector<std::vector<int>>    tab_4b_stride;
+    std::vector<std::vector<double>> tab_4b_r0;
+    std::vector<std::vector<double>> tab_4b_dr;
+    std::vector<std::vector<double>> tab_4b_invdr;
 #endif
 
 #ifdef TABULATION
     void read_4B_coeff_meta(std::string meta_file, int quadidx);
     void read_4B_coeff_tab (std::string data_file, int quadidx);
 
-    void interpolateTrilinearCoeff4B(
+
+    void interpolateCoeff4B_2D(
         int quadidx,
-        double ra, double rb, double rc,
-        std::vector<double> & coeffE,
-        std::vector<double> & coeffdA,
-        std::vector<double> & coeffdB,
-        std::vector<double> & coeffdC
+        const double *rquery,
+        double *coeffE,
+        double *coeffD0,
+        double *coeffD1
+    );
+
+    void interpolateCoeff4B_3D(
+        int quadidx,
+        const double *rquery,
+        double *coeffE,
+        double *coeffD0,
+        double *coeffD1,
+        double *coeffD2
+    );
+
+    void interpolateCoeff4B_4D(
+        int quadidx,
+        const double *rquery,
+        double *coeffE,
+        double *coeffD0,
+        double *coeffD1,
+        double *coeffD2,
+        double *coeffD3
     );
 
     void compute_4B_tab_coeff(

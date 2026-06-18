@@ -366,9 +366,14 @@ void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
     vector<string> items;
 
     int ncoeff = -1;
-    array<int,3> contracted_dims = {-1,-1,-1};
-    array<int,3> retained_dims   = {-1,-1,-1};
-    vector<array<int,3>> coeff_powers;
+    int ncontracted = -1;
+    int nretained = -1;
+    vector<int> contracted_dims;
+    vector<int> retained_dims;
+    vector<vector<int>> coeff_powers;
+
+    vector<string> canonical_pair_types;
+    vector<int> canon_to_param;
 
     bool reading_coeff_powers = false;
 
@@ -379,66 +384,86 @@ void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
         int n = split_line(line, items);
         if (n == 0) continue;
 
-        if (items[0] == "contracted_dims")
+        if (items[0] == "ncontracted")
+            ncontracted = stoi(items[1]);
+        else if (items[0] == "contracted_dims")
         {
-            if (n != 4)
-            {
-                cout << "ERROR: contracted_dims line must have 4 entries in " << meta_file << endl;
-                exit(0);
-            }
-            contracted_dims[0] = stoi(items[1]);
-            contracted_dims[1] = stoi(items[2]);
-            contracted_dims[2] = stoi(items[3]);
+            contracted_dims.clear();
+            for (int i=1; i<n; i++) contracted_dims.push_back(stoi(items[i]));
         }
+        else if (items[0] == "nretained")
+            nretained = stoi(items[1]);
         else if (items[0] == "retained_dims")
         {
-            if (n != 4)
-            {
-                cout << "ERROR: retained_dims line must have 4 entries in " << meta_file << endl;
-                exit(0);
-            }
-            retained_dims[0] = stoi(items[1]);
-            retained_dims[1] = stoi(items[2]);
-            retained_dims[2] = stoi(items[3]);
+            retained_dims.clear();
+            for (int i=1; i<n; i++) retained_dims.push_back(stoi(items[i]));
         }
         else if (items[0] == "ncoeff")
-        {
-            if (n != 2)
-            {
-                cout << "ERROR: ncoeff line must have 2 entries in " << meta_file << endl;
-                exit(0);
-            }
             ncoeff = stoi(items[1]);
+        else if (items[0] == "canonical_pair_types")
+        {
+            canonical_pair_types.clear();
+            for (int i=1; i<n; i++) canonical_pair_types.push_back(items[i]);
+        }
+        else if (items[0] == "canon_to_param")
+        {
+            canon_to_param.clear();
+            for (int i=1; i<n; i++) canon_to_param.push_back(stoi(items[i]));
         }
         else if (items[0] == "coeff_powers")
-        {
             reading_coeff_powers = true;
-        }
         else if (reading_coeff_powers)
         {
-            if (n != 3)
-            {
-                cout << "ERROR: coeff_powers entry must have 3 integers in " << meta_file << endl;
-                cout << "Line: " << line << endl;
-                exit(0);
-            }
-            array<int,3> p = {stoi(items[0]), stoi(items[1]), stoi(items[2])};
+            vector<int> p;
+            for (int i=0; i<n; i++) p.push_back(stoi(items[i]));
             coeff_powers.push_back(p);
         }
     }
 
     in.close();
 
-    if (ncoeff < 0)
+    if (ncoeff < 0 || ncontracted < 0 || nretained < 0)
     {
-        cout << "ERROR: Did not read ncoeff from " << meta_file << endl;
+        cout << "ERROR: Incomplete 4B metadata in " << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)contracted_dims.size() != ncontracted)
+    {
+        cout << "ERROR: contracted_dims size mismatch in " << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)retained_dims.size() != nretained)
+    {
+        cout << "ERROR: retained_dims size mismatch in " << meta_file << endl;
         exit(0);
     }
 
     if ((int)coeff_powers.size() != ncoeff)
     {
-        cout << "ERROR: coeff_powers count does not match ncoeff in " << meta_file << endl;
-        cout << "ncoeff = " << ncoeff << " coeff_powers.size() = " << coeff_powers.size() << endl;
+        cout << "ERROR: coeff_powers count mismatch in " << meta_file << endl;
+        exit(0);
+    }
+
+    for (int i=0; i<ncoeff; i++)
+    {
+        if ((int)coeff_powers[i].size() != nretained)
+        {
+            cout << "ERROR: coeff_powers tuple length mismatch in " << meta_file << endl;
+            exit(0);
+        }
+    }
+
+    if (!canonical_pair_types.empty() && (int)canonical_pair_types.size() != 6)
+    {
+        cout << "ERROR: canonical_pair_types must have length 6 in " << meta_file << endl;
+        exit(0);
+    }
+
+    if (!canon_to_param.empty() && (int)canon_to_param.size() != 6)
+    {
+        cout << "ERROR: canon_to_param must have length 6 in " << meta_file << endl;
         exit(0);
     }
 
@@ -449,21 +474,95 @@ void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
         tab_4b_coeff_powers.resize(quadidx+1);
         tab_4b_ncoeff.resize(quadidx+1);
         tab_4b_ngrid.resize(quadidx+1);
+        tab_4b_ncontracted.resize(quadidx+1);
+        tab_4b_nretained.resize(quadidx+1);
+        tab_4b_stride.resize(quadidx+1);
+        tab_4b_r0.resize(quadidx+1);
+        tab_4b_dr.resize(quadidx+1);
+        tab_4b_invdr.resize(quadidx+1);
+
+        tab_4b_canonical_pair_types.resize(quadidx+1);
+        tab_4b_canon_to_param.resize(quadidx+1);
     }
 
     tab_4b_contracted_dims[quadidx] = contracted_dims;
     tab_4b_retained_dims[quadidx]   = retained_dims;
     tab_4b_coeff_powers[quadidx]    = coeff_powers;
     tab_4b_ncoeff[quadidx]          = ncoeff;
+    tab_4b_ncontracted[quadidx]     = ncontracted;
+    tab_4b_nretained[quadidx]       = nretained;
+    tab_4b_canonical_pair_types[quadidx] = canonical_pair_types;
+    tab_4b_canon_to_param[quadidx]       = canon_to_param;
 
     if (rank == 0)
     {
         cout << "chimesFF: Read 4B coeff metadata for quad type " << quadidx << endl;
-        cout << "chimesFF: \tcontracted dims: "
-             << contracted_dims[0] << " " << contracted_dims[1] << " " << contracted_dims[2] << endl;
-        cout << "chimesFF: \tretained dims:   "
-             << retained_dims[0] << " " << retained_dims[1] << " " << retained_dims[2] << endl;
-        cout << "chimesFF: \tncoeff: " << ncoeff << endl;
+        cout << "chimesFF: \tncontracted: " << ncontracted << endl;
+        cout << "chimesFF: \tnretained:   " << nretained << endl;
+        cout << "chimesFF: \tncoeff:      " << ncoeff << endl;
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::build_runtime_canonical_maps_4B(
+    int quadidx,
+    const std::vector<int> & mapped_pair_idx,
+    const std::vector<double> & dx,
+    int *canon_to_runtime,
+    int *runtime_to_canon
+)
+{
+    struct PairInfo
+    {
+        int canonical_slot;
+        int runtime_slot;
+        std::string pair_type;
+        double dist;
+    };
+
+    // Build parameter->runtime map first
+    int param_to_runtime[6];
+    for (int r = 0; r < 6; r++)
+        param_to_runtime[mapped_pair_idx[r]] = r;
+
+    // For each canonical slot, determine current runtime slot
+    std::vector<PairInfo> entries(6);
+
+    for (int c = 0; c < 6; c++)
+    {
+        int pslot;
+        if ((int)tab_4b_canon_to_param[quadidx].size() == 6)
+            pslot = tab_4b_canon_to_param[quadidx][c];
+        else
+            pslot = c;
+
+        int rslot = param_to_runtime[pslot];
+
+        entries[c].canonical_slot = c;
+        entries[c].runtime_slot   = rslot;
+        if ((int)tab_4b_canonical_pair_types[quadidx].size() == 6)
+            entries[c].pair_type  = tab_4b_canonical_pair_types[quadidx][c];
+        else
+            entries[c].pair_type  = quad_params_pair_typs[quadidx][pslot];
+        entries[c].dist = dx[rslot];
+    }
+
+    // Keep pair-type group order fixed, but for same-type groups sort by descending distance
+    std::stable_sort(entries.begin(), entries.end(),
+        [](const PairInfo &a, const PairInfo &b)
+        {
+            if (a.pair_type != b.pair_type)
+                return a.pair_type < b.pair_type;
+            if (a.dist != b.dist)
+                return a.dist > b.dist;
+            return a.canonical_slot < b.canonical_slot;
+        });
+
+    for (int c = 0; c < 6; c++)
+    {
+        canon_to_runtime[c] = entries[c].runtime_slot;
+        runtime_to_canon[entries[c].runtime_slot] = c;
     }
 }
 #endif
@@ -486,6 +585,8 @@ void chimesFF::read_4B_coeff_tab(string data_file, int quadidx)
     }
 
     int ncoeff = tab_4b_ncoeff[quadidx];
+    int ncontracted = tab_4b_ncontracted[quadidx];
+    int nblocks = 1 + ncontracted;
 
     string line;
     vector<string> items;
@@ -493,82 +594,111 @@ void chimesFF::read_4B_coeff_tab(string data_file, int quadidx)
     line = get_next_line(in);
     int nrows = stoi(line);
 
-    if ((int)tab_rA_4B.size() <= quadidx)
+    if ((int)tab_r_4B.size() <= quadidx)
     {
-        tab_rA_4B.resize(quadidx+1);
-        tab_rB_4B.resize(quadidx+1);
-        tab_rC_4B.resize(quadidx+1);
-
-        tab_coeffs_4B_E.resize(quadidx+1);
-        tab_coeffs_4B_dA.resize(quadidx+1);
-        tab_coeffs_4B_dB.resize(quadidx+1);
-        tab_coeffs_4B_dC.resize(quadidx+1);
+        tab_r_4B.resize(quadidx+1);
+        tab_coeffs_4B_blocks_flat.resize(quadidx+1);
     }
 
-    tab_rA_4B[quadidx].reserve(nrows);
-    tab_rB_4B[quadidx].reserve(nrows);
-    tab_rC_4B[quadidx].reserve(nrows);
+    tab_r_4B[quadidx].resize(ncontracted);
+    tab_coeffs_4B_blocks_flat[quadidx].resize(nblocks);
 
-    tab_coeffs_4B_E [quadidx].reserve(nrows);
-    tab_coeffs_4B_dA[quadidx].reserve(nrows);
-    tab_coeffs_4B_dB[quadidx].reserve(nrows);
-    tab_coeffs_4B_dC[quadidx].reserve(nrows);
+    for (int d=0; d<ncontracted; d++)
+        tab_r_4B[quadidx][d].reserve(nrows);
+
+    for (int b=0; b<nblocks; b++)
+        tab_coeffs_4B_blocks_flat[quadidx][b].resize((size_t)nrows * ncoeff);
 
     for (int i=0; i<nrows; i++)
     {
         line = get_next_line(in);
         int n = split_line(line, items);
 
-        if (n != 3 + 4*ncoeff)
+        int expected = ncontracted + nblocks*ncoeff;
+        if (n != expected)
         {
-            cout << "ERROR: Expected " << (3 + 4*ncoeff)
+            cout << "ERROR: Expected " << expected
                  << " entries in 4B coeff row, got " << n << endl;
             cout << "Line: " << line << endl;
             exit(0);
         }
 
-        tab_rA_4B[quadidx].push_back(stod(items[0]));
-        tab_rB_4B[quadidx].push_back(stod(items[1]));
-        tab_rC_4B[quadidx].push_back(stod(items[2]));
+        for (int d=0; d<ncontracted; d++)
+            tab_r_4B[quadidx][d].push_back(stod(items[d]));
 
-        vector<double> coeffE(ncoeff), coeffdA(ncoeff), coeffdB(ncoeff), coeffdC(ncoeff);
-
-        int offE  = 3;
-        int offdA = 3 + ncoeff;
-        int offdB = 3 + 2*ncoeff;
-        int offdC = 3 + 3*ncoeff;
-
-        for (int c=0; c<ncoeff; c++)
+        int offset = ncontracted;
+        for (int b=0; b<nblocks; b++)
         {
-            coeffE [c] = stod(items[offE  + c]);
-            coeffdA[c] = stod(items[offdA + c]);
-            coeffdB[c] = stod(items[offdB + c]);
-            coeffdC[c] = stod(items[offdC + c]);
+            for (int c=0; c<ncoeff; c++)
+            {
+                tab_coeffs_4B_blocks_flat[quadidx][b][(size_t)i*ncoeff + c] =
+                    stod(items[offset + b*ncoeff + c]);
+            }
         }
-
-        tab_coeffs_4B_E [quadidx].push_back(coeffE);
-        tab_coeffs_4B_dA[quadidx].push_back(coeffdA);
-        tab_coeffs_4B_dB[quadidx].push_back(coeffdB);
-        tab_coeffs_4B_dC[quadidx].push_back(coeffdC);
     }
 
     in.close();
 
-    int ngrid = round(cbrt((double)nrows));
-    if (ngrid*ngrid*ngrid != nrows)
+    int ngrid = 0;
+    if (ncontracted == 2) ngrid = round(sqrt((double)nrows));
+    else if (ncontracted == 3) ngrid = round(cbrt((double)nrows));
+    else if (ncontracted == 4) ngrid = round(sqrt(sqrt((double)nrows)));
+    else
     {
-        cout << "ERROR: 4B coeff table row count is not a perfect cube: " << nrows << endl;
+        cout << "ERROR: read_4B_coeff_tab supports only 2/3/4 contracted dims" << endl;
         exit(0);
     }
+
+    int check = 1;
+    for (int i=0; i<ncontracted; i++) check *= ngrid;
+    if (check != nrows)
+    {
+        cout << "ERROR: 4B coeff table row count incompatible with uniform grid: " << nrows << endl;
+        exit(0);
+    }
+
     tab_4b_ngrid[quadidx] = ngrid;
+
+    tab_4b_stride[quadidx].resize(ncontracted);
+    tab_4b_r0[quadidx].resize(ncontracted);
+    tab_4b_dr[quadidx].resize(ncontracted);
+    tab_4b_invdr[quadidx].resize(ncontracted);
+
+    if (ncontracted == 2)
+    {
+        tab_4b_stride[quadidx][0] = ngrid;
+        tab_4b_stride[quadidx][1] = 1;
+    }
+    else if (ncontracted == 3)
+    {
+        tab_4b_stride[quadidx][0] = ngrid*ngrid;
+        tab_4b_stride[quadidx][1] = ngrid;
+        tab_4b_stride[quadidx][2] = 1;
+    }
+    else if (ncontracted == 4)
+    {
+        tab_4b_stride[quadidx][0] = ngrid*ngrid*ngrid;
+        tab_4b_stride[quadidx][1] = ngrid*ngrid;
+        tab_4b_stride[quadidx][2] = ngrid;
+        tab_4b_stride[quadidx][3] = 1;
+    }
+
+    for (int d=0; d<ncontracted; d++)
+    {
+        int sd = tab_4b_stride[quadidx][d];
+        tab_4b_r0[quadidx][d] = tab_r_4B[quadidx][d][0];
+        tab_4b_dr[quadidx][d] = tab_r_4B[quadidx][d][sd] - tab_r_4B[quadidx][d][0];
+        tab_4b_invdr[quadidx][d] = 1.0 / tab_4b_dr[quadidx][d];
+    }
 
     if (rank == 0)
     {
         cout << "chimesFF: Read 4B coeff table for quad type " << quadidx << endl;
-        cout << "chimesFF: \tnrows  = " << nrows << endl;
-        cout << "chimesFF: \tngrid  = " << ngrid << endl;
-        cout << "chimesFF: \tncoeff = " << ncoeff << endl;
-        cout << "chimesFF: \ttable blocks = E dA dB dC" << endl;
+        cout << "chimesFF: \tnrows        = " << nrows << endl;
+        cout << "chimesFF: \tngrid        = " << ngrid << endl;
+        cout << "chimesFF: \tncoeff       = " << ncoeff << endl;
+        cout << "chimesFF: \tncontracted  = " << ncontracted << endl;
+        cout << "chimesFF: \tnblocks      = " << nblocks << endl;
     }
 }
 #endif
@@ -1403,10 +1533,14 @@ void chimesFF::read_parameters(string paramfile)
         
         found_end = false;
     
-        while (!found_end)
+                while (!found_end)
         {
-            
-        #ifdef TABULATION
+            line = get_next_line(param_file);
+
+            if(line.find("ENDFILE") != string::npos)
+                break;
+
+#ifdef TABULATION
             if(line.find("4B COEFF TABLES:") != string::npos)
             {
                 split_line(line, tmp_str_items);
@@ -1438,6 +1572,7 @@ void chimesFF::read_parameters(string paramfile)
                     read_4B_coeff_meta(metafile, quadidx);
                     read_4B_coeff_tab (datafile, quadidx);
                 }
+                continue;
             }
 #endif
             line = get_next_line(param_file);
@@ -2623,7 +2758,6 @@ void chimesFF::compute_4B_tab_coeff(
     vector<double> & force_scalar_in
 )
 {
-    const int natoms = 4;
     const int npairs = 6;
 
     vector<double> &Tn_ij   = tmp.Tn_ij;
@@ -2653,12 +2787,6 @@ void chimesFF::compute_4B_tab_coeff(
     for (int i=0; i<npairs; i++)
         if (dx[i] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]])
             return;
-
-    if ((int)tab_4b_ncoeff.size() <= quadidx || tab_4b_ncoeff[quadidx] <= 0)
-    {
-        cout << "ERROR: compute_4B_tab_coeff called but no table loaded for quadidx " << quadidx << endl;
-        exit(0);
-    }
 
     int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
     int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
@@ -2690,81 +2818,177 @@ void chimesFF::compute_4B_tab_coeff(
     for (int i=0; i<npairs; i++)
         get_fcut(dx[i], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]], fcut[i], fcutderiv[i]);
 
-    const auto & contracted_dims = tab_4b_contracted_dims[quadidx];
-    const auto & retained_dims   = tab_4b_retained_dims[quadidx];
-    const auto & coeff_powers    = tab_4b_coeff_powers[quadidx];
+    const vector<int> & contracted_dims = tab_4b_contracted_dims[quadidx];
+    const vector<int> & retained_dims   = tab_4b_retained_dims[quadidx];
+    const vector<vector<int>> & coeff_powers = tab_4b_coeff_powers[quadidx];
 
-    double ra = dx[contracted_dims[0]];
-    double rb = dx[contracted_dims[1]];
-    double rc = dx[contracted_dims[2]];
+    int ncontracted = tab_4b_ncontracted[quadidx];
+    int nretained   = tab_4b_nretained[quadidx];
+    int ncoeff      = tab_4b_ncoeff[quadidx];
 
-    vector<double> coeffE, coeffdA, coeffdB, coeffdC;
-    interpolateTrilinearCoeff4B(quadidx, ra, rb, rc, coeffE, coeffdA, coeffdB, coeffdC);
+    vector<double>* Tptr[6]  = {&Tn_ij, &Tn_ik, &Tn_il, &Tn_jk, &Tn_jl, &Tn_kl};
+    vector<double>* Tdptr[6] = {&Tnd_ij,&Tnd_ik,&Tnd_il,&Tnd_jk,&Tnd_jl,&Tnd_kl};
 
-    auto getT  = [&](int dim) -> vector<double>& {
-        if (dim == 0) return Tn_ij;
-        if (dim == 1) return Tn_ik;
-        if (dim == 2) return Tn_il;
-        if (dim == 3) return Tn_jk;
-        if (dim == 4) return Tn_jl;
-        return Tn_kl;
-    };
+    // Build canonical<->runtime maps
+    int canon_to_runtime[6];
+    int runtime_to_canon[6];
+    build_runtime_canonical_maps_4B(quadidx, mapped_pair_idx, dx, canon_to_runtime, runtime_to_canon);
 
-    auto getTd = [&](int dim) -> vector<double>& {
-        if (dim == 0) return Tnd_ij;
-        if (dim == 1) return Tnd_ik;
-        if (dim == 2) return Tnd_il;
-        if (dim == 3) return Tnd_jk;
-        if (dim == 4) return Tnd_jl;
-        return Tnd_kl;
-    };
+    double dE_pair[6] = {0,0,0,0,0,0};
 
-    int da = contracted_dims[0];
-    int db = contracted_dims[1];
-    int dc = contracted_dims[2];
+    double *coeffE  = new double[ncoeff];
+    double *coeffD0 = new double[ncoeff];
+    double *coeffD1 = new double[ncoeff];
+    double *coeffD2 = (ncontracted >= 3) ? new double[ncoeff] : nullptr;
+    double *coeffD3 = (ncontracted >= 4) ? new double[ncoeff] : nullptr;
 
-    int du = retained_dims[0];
-    int dv = retained_dims[1];
-    int dw = retained_dims[2];
+    double rquery[4] = {0.0,0.0,0.0,0.0};
+    for (int i=0; i<ncontracted; i++)
+    {
+        int cslot = contracted_dims[i];
+        int rslot = canon_to_runtime[cslot];
+        rquery[i] = dx[rslot];
+    }
 
-    double dE_pair[6] = {0.0,0.0,0.0,0.0,0.0,0.0};
+#if defined(CHIMES_4B_TAB_2D)
+    interpolateCoeff4B_2D(quadidx, rquery, coeffE, coeffD0, coeffD1);
+#elif defined(CHIMES_4B_TAB_3D)
+    interpolateCoeff4B_3D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2);
+#elif defined(CHIMES_4B_TAB_4D)
+    interpolateCoeff4B_4D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2, coeffD3);
+#else
+    #error "Must define CHIMES_4B_TAB_2D, CHIMES_4B_TAB_3D, or CHIMES_4B_TAB_4D"
+#endif
 
-    int ncoeff = tab_4b_ncoeff[quadidx];
+#if defined(CHIMES_4B_TAB_2D)
+    if (ncontracted != 2 || nretained != 4)
+    {
+        cout << "ERROR: CHIMES_4B_TAB_2D build expects ncontracted=2 nretained=4" << endl;
+        exit(0);
+    }
+
+    int c0 = canon_to_runtime[contracted_dims[0]];
+    int c1 = canon_to_runtime[contracted_dims[1]];
+
+    int r0 = canon_to_runtime[retained_dims[0]];
+    int r1 = canon_to_runtime[retained_dims[1]];
+    int r2 = canon_to_runtime[retained_dims[2]];
+    int r3 = canon_to_runtime[retained_dims[3]];
 
     for (int q=0; q<ncoeff; q++)
     {
-        int pu = coeff_powers[q][0];
-        int pv = coeff_powers[q][1];
-        int pw = coeff_powers[q][2];
+        int p0 = coeff_powers[q][0];
+        int p1 = coeff_powers[q][1];
+        int p2 = coeff_powers[q][2];
+        int p3 = coeff_powers[q][3];
 
-        double Tu  = getT(du )[pu];
-        double Tv  = getT(dv )[pv];
-        double Tw  = getT(dw )[pw];
+        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
+        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
+        double A2 = fcut[r2] * (*(Tptr[r2]))[p2];
+        double A3 = fcut[r3] * (*(Tptr[r3]))[p3];
 
-        double Tud = getTd(du)[pu];
-        double Tvd = getTd(dv)[pv];
-        double Twd = getTd(dw)[pw];
+        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
+        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
+        double B2 = fcutderiv[r2] * (*(Tptr[r2]))[p2] + fcut[r2] * (*(Tdptr[r2]))[p2];
+        double B3 = fcutderiv[r3] * (*(Tptr[r3]))[p3] + fcut[r3] * (*(Tdptr[r3]))[p3];
 
-        double Ru = fcut[du] * Tu;
-        double Rv = fcut[dv] * Tv;
-        double Rw = fcut[dw] * Tw;
+        double retained_prod = A0*A1*A2*A3;
 
-        double dRu = fcutderiv[du] * Tu + fcut[du] * Tud;
-        double dRv = fcutderiv[dv] * Tv + fcut[dv] * Tvd;
-        double dRw = fcutderiv[dw] * Tw + fcut[dw] * Twd;
+        energy      += coeffE[q]  * retained_prod;
+        dE_pair[c0] += coeffD0[q] * retained_prod;
+        dE_pair[c1] += coeffD1[q] * retained_prod;
 
-        double retained_prod = Ru * Rv * Rw;
-
-        energy += coeffE[q] * retained_prod;
-
-        dE_pair[da] += coeffdA[q] * retained_prod;
-        dE_pair[db] += coeffdB[q] * retained_prod;
-        dE_pair[dc] += coeffdC[q] * retained_prod;
-
-        dE_pair[du] += coeffE[q] * dRu * Rv  * Rw;
-        dE_pair[dv] += coeffE[q] * Ru  * dRv * Rw;
-        dE_pair[dw] += coeffE[q] * Ru  * Rv  * dRw;
+        dE_pair[r0] += coeffE[q] * B0*A1*A2*A3;
+        dE_pair[r1] += coeffE[q] * A0*B1*A2*A3;
+        dE_pair[r2] += coeffE[q] * A0*A1*B2*A3;
+        dE_pair[r3] += coeffE[q] * A0*A1*A2*B3;
     }
+
+#elif defined(CHIMES_4B_TAB_3D)
+    if (ncontracted != 3 || nretained != 3)
+    {
+        cout << "ERROR: CHIMES_4B_TAB_3D build expects ncontracted=3 nretained=3" << endl;
+        exit(0);
+    }
+
+    int c0 = canon_to_runtime[contracted_dims[0]];
+    int c1 = canon_to_runtime[contracted_dims[1]];
+    int c2 = canon_to_runtime[contracted_dims[2]];
+
+    int r0 = canon_to_runtime[retained_dims[0]];
+    int r1 = canon_to_runtime[retained_dims[1]];
+    int r2 = canon_to_runtime[retained_dims[2]];
+
+    for (int q=0; q<ncoeff; q++)
+    {
+        int p0 = coeff_powers[q][0];
+        int p1 = coeff_powers[q][1];
+        int p2 = coeff_powers[q][2];
+
+        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
+        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
+        double A2 = fcut[r2] * (*(Tptr[r2]))[p2];
+
+        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
+        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
+        double B2 = fcutderiv[r2] * (*(Tptr[r2]))[p2] + fcut[r2] * (*(Tdptr[r2]))[p2];
+
+        double retained_prod = A0*A1*A2;
+
+        energy      += coeffE[q]  * retained_prod;
+        dE_pair[c0] += coeffD0[q] * retained_prod;
+        dE_pair[c1] += coeffD1[q] * retained_prod;
+        dE_pair[c2] += coeffD2[q] * retained_prod;
+
+        dE_pair[r0] += coeffE[q] * B0*A1*A2;
+        dE_pair[r1] += coeffE[q] * A0*B1*A2;
+        dE_pair[r2] += coeffE[q] * A0*A1*B2;
+    }
+
+#elif defined(CHIMES_4B_TAB_4D)
+    if (ncontracted != 4 || nretained != 2)
+    {
+        cout << "ERROR: CHIMES_4B_TAB_4D build expects ncontracted=4 nretained=2" << endl;
+        exit(0);
+    }
+
+    int c0 = canon_to_runtime[contracted_dims[0]];
+    int c1 = canon_to_runtime[contracted_dims[1]];
+    int c2 = canon_to_runtime[contracted_dims[2]];
+    int c3 = canon_to_runtime[contracted_dims[3]];
+
+    int r0 = canon_to_runtime[retained_dims[0]];
+    int r1 = canon_to_runtime[retained_dims[1]];
+
+    for (int q=0; q<ncoeff; q++)
+    {
+        int p0 = coeff_powers[q][0];
+        int p1 = coeff_powers[q][1];
+
+        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
+        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
+
+        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
+        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
+
+        double retained_prod = A0*A1;
+
+        energy      += coeffE[q]  * retained_prod;
+        dE_pair[c0] += coeffD0[q] * retained_prod;
+        dE_pair[c1] += coeffD1[q] * retained_prod;
+        dE_pair[c2] += coeffD2[q] * retained_prod;
+        dE_pair[c3] += coeffD3[q] * retained_prod;
+
+        dE_pair[r0] += coeffE[q] * B0*A1;
+        dE_pair[r1] += coeffE[q] * A0*B1;
+    }
+#endif
+
+    delete [] coeffE;
+    delete [] coeffD0;
+    delete [] coeffD1;
+    if (coeffD2) delete [] coeffD2;
+    if (coeffD3) delete [] coeffD3;
 
     double force_scalar[6];
     for (int p=0; p<6; p++)
@@ -2851,100 +3075,247 @@ void chimesFF::compute_4B_tab_coeff(
 #endif
 
 #ifdef TABULATION
-void chimesFF::interpolateTrilinearCoeff4B(
+void chimesFF::interpolateCoeff4B_2D(
     int quadidx,
-    double ra, double rb, double rc,
-    vector<double> & coeffE,
-    vector<double> & coeffdA,
-    vector<double> & coeffdB,
-    vector<double> & coeffdC
+    const double *rquery,
+    double *coeffE,
+    double *coeffD0,
+    double *coeffD1
 )
 {
-    const auto & rA    = tab_rA_4B[quadidx];
-    const auto & rB    = tab_rB_4B[quadidx];
-    const auto & rC    = tab_rC_4B[quadidx];
-    const auto & valsE = tab_coeffs_4B_E [quadidx];
-    const auto & valsA = tab_coeffs_4B_dA[quadidx];
-    const auto & valsB = tab_coeffs_4B_dB[quadidx];
-    const auto & valsC = tab_coeffs_4B_dC[quadidx];
+    const int ncoeff = tab_4b_ncoeff[quadidx];
+    const int stride0 = tab_4b_stride[quadidx][0];
+    const int ngrid = tab_4b_ngrid[quadidx];
 
-    int ncoeff = tab_4b_ncoeff[quadidx];
-    int ngrid  = tab_4b_ngrid[quadidx];
+    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
+    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
 
-    coeffE.resize(ncoeff);
-    coeffdA.resize(ncoeff);
-    coeffdB.resize(ncoeff);
-    coeffdC.resize(ncoeff);
+    if (i0 < 0) i0 = 0;
+    if (i1 < 0) i1 = 0;
+    if (i0 > ngrid-2) i0 = ngrid-2;
+    if (i1 > ngrid-2) i1 = ngrid-2;
 
-    int strideA = ngrid * ngrid;
-    int strideB = ngrid;
-    int strideC = 1;
+    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
+    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
 
-    double rA0 = rA[0];
-    double rB0 = rB[0];
-    double rC0 = rC[0];
+    double w00 = (1.0-t0)*(1.0-t1);
+    double w01 = (1.0-t0)*t1;
+    double w10 = t0*(1.0-t1);
+    double w11 = t0*t1;
 
-    double dA = rA[strideA] - rA[0];
-    double dB = rB[strideB] - rB[0];
-    double dC = rC[1]       - rC[0];
+    int idx00 = i0*stride0 + i1;
+    int idx01 = idx00 + 1;
+    int idx10 = idx00 + stride0;
+    int idx11 = idx10 + 1;
 
-    int ia = (int) floor((ra - rA0) / dA);
-    int ib = (int) floor((rb - rB0) / dB);
-    int ic = (int) floor((rc - rC0) / dC);
+    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
+    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
+    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
 
-    if (ia < 0) ia = 0;
-    if (ib < 0) ib = 0;
-    if (ic < 0) ic = 0;
+    size_t o00 = (size_t)idx00 * ncoeff;
+    size_t o01 = (size_t)idx01 * ncoeff;
+    size_t o10 = (size_t)idx10 * ncoeff;
+    size_t o11 = (size_t)idx11 * ncoeff;
 
-    if (ia > ngrid-2) ia = ngrid-2;
-    if (ib > ngrid-2) ib = ngrid-2;
-    if (ic > ngrid-2) ic = ngrid-2;
-
-    double a0 = rA0 + ia*dA;
-    double b0 = rB0 + ib*dB;
-    double c0 = rC0 + ic*dC;
-
-    double tx = (ra - a0)/dA;
-    double ty = (rb - b0)/dB;
-    double tz = (rc - c0)/dC;
-
-    int i000 = ia*strideA + ib*strideB + ic;
-    int i001 = i000 + 1;
-    int i010 = i000 + strideB;
-    int i011 = i010 + 1;
-    int i100 = i000 + strideA;
-    int i101 = i100 + 1;
-    int i110 = i100 + strideB;
-    int i111 = i110 + 1;
-
-    for (int q=0; q<ncoeff; q++)
+    for (int c=0; c<ncoeff; c++)
     {
-        auto interp = [&](const vector<vector<double>> & vals) -> double
+        coeffE[c]  = w00*E [o00+c] + w01*E [o01+c] + w10*E [o10+c] + w11*E [o11+c];
+        coeffD0[c] = w00*D0[o00+c] + w01*D0[o01+c] + w10*D0[o10+c] + w11*D0[o11+c];
+        coeffD1[c] = w00*D1[o00+c] + w01*D1[o01+c] + w10*D1[o10+c] + w11*D1[o11+c];
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::interpolateCoeff4B_3D(
+    int quadidx,
+    const double *rquery,
+    double *coeffE,
+    double *coeffD0,
+    double *coeffD1,
+    double *coeffD2
+)
+{
+    const int ncoeff = tab_4b_ncoeff[quadidx];
+    const int stride0 = tab_4b_stride[quadidx][0];
+    const int stride1 = tab_4b_stride[quadidx][1];
+    const int ngrid = tab_4b_ngrid[quadidx];
+
+    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
+    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
+    int i2 = (int) ((rquery[2] - tab_4b_r0[quadidx][2]) * tab_4b_invdr[quadidx][2]);
+
+    if (i0 < 0) i0 = 0;
+    if (i1 < 0) i1 = 0;
+    if (i2 < 0) i2 = 0;
+    if (i0 > ngrid-2) i0 = ngrid-2;
+    if (i1 > ngrid-2) i1 = ngrid-2;
+    if (i2 > ngrid-2) i2 = ngrid-2;
+
+    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
+    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
+    double t2 = (rquery[2] - (tab_4b_r0[quadidx][2] + i2*tab_4b_dr[quadidx][2])) * tab_4b_invdr[quadidx][2];
+
+    double a0 = 1.0-t0, a1 = 1.0-t1, a2 = 1.0-t2;
+    double b0 = t0,     b1 = t1,     b2 = t2;
+
+    int idx000 = i0*stride0 + i1*stride1 + i2;
+    int idx001 = idx000 + 1;
+    int idx010 = idx000 + stride1;
+    int idx011 = idx010 + 1;
+    int idx100 = idx000 + stride0;
+    int idx101 = idx100 + 1;
+    int idx110 = idx100 + stride1;
+    int idx111 = idx110 + 1;
+
+    double w000 = a0*a1*a2;
+    double w001 = a0*a1*b2;
+    double w010 = a0*b1*a2;
+    double w011 = a0*b1*b2;
+    double w100 = b0*a1*a2;
+    double w101 = b0*a1*b2;
+    double w110 = b0*b1*a2;
+    double w111 = b0*b1*b2;
+
+    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
+    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
+    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
+    const vector<double> & D2 = tab_coeffs_4B_blocks_flat[quadidx][3];
+
+    size_t o000 = (size_t)idx000*ncoeff;
+    size_t o001 = (size_t)idx001*ncoeff;
+    size_t o010 = (size_t)idx010*ncoeff;
+    size_t o011 = (size_t)idx011*ncoeff;
+    size_t o100 = (size_t)idx100*ncoeff;
+    size_t o101 = (size_t)idx101*ncoeff;
+    size_t o110 = (size_t)idx110*ncoeff;
+    size_t o111 = (size_t)idx111*ncoeff;
+
+    for (int c=0; c<ncoeff; c++)
+    {
+        coeffE[c] =
+            w000*E[o000+c] + w001*E[o001+c] + w010*E[o010+c] + w011*E[o011+c] +
+            w100*E[o100+c] + w101*E[o101+c] + w110*E[o110+c] + w111*E[o111+c];
+
+        coeffD0[c] =
+            w000*D0[o000+c] + w001*D0[o001+c] + w010*D0[o010+c] + w011*D0[o011+c] +
+            w100*D0[o100+c] + w101*D0[o101+c] + w110*D0[o110+c] + w111*D0[o111+c];
+
+        coeffD1[c] =
+            w000*D1[o000+c] + w001*D1[o001+c] + w010*D1[o010+c] + w011*D1[o011+c] +
+            w100*D1[o100+c] + w101*D1[o101+c] + w110*D1[o110+c] + w111*D1[o111+c];
+
+        coeffD2[c] =
+            w000*D2[o000+c] + w001*D2[o001+c] + w010*D2[o010+c] + w011*D2[o011+c] +
+            w100*D2[o100+c] + w101*D2[o101+c] + w110*D2[o110+c] + w111*D2[o111+c];
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::interpolateCoeff4B_4D(
+    int quadidx,
+    const double *rquery,
+    double *coeffE,
+    double *coeffD0,
+    double *coeffD1,
+    double *coeffD2,
+    double *coeffD3
+)
+{
+    const int ncoeff = tab_4b_ncoeff[quadidx];
+    const int stride0 = tab_4b_stride[quadidx][0];
+    const int stride1 = tab_4b_stride[quadidx][1];
+    const int stride2 = tab_4b_stride[quadidx][2];
+    const int ngrid = tab_4b_ngrid[quadidx];
+
+    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
+    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
+    int i2 = (int) ((rquery[2] - tab_4b_r0[quadidx][2]) * tab_4b_invdr[quadidx][2]);
+    int i3 = (int) ((rquery[3] - tab_4b_r0[quadidx][3]) * tab_4b_invdr[quadidx][3]);
+
+    if (i0 < 0) i0 = 0;
+    if (i1 < 0) i1 = 0;
+    if (i2 < 0) i2 = 0;
+    if (i3 < 0) i3 = 0;
+    if (i0 > ngrid-2) i0 = ngrid-2;
+    if (i1 > ngrid-2) i1 = ngrid-2;
+    if (i2 > ngrid-2) i2 = ngrid-2;
+    if (i3 > ngrid-2) i3 = ngrid-2;
+
+    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
+    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
+    double t2 = (rquery[2] - (tab_4b_r0[quadidx][2] + i2*tab_4b_dr[quadidx][2])) * tab_4b_invdr[quadidx][2];
+    double t3 = (rquery[3] - (tab_4b_r0[quadidx][3] + i3*tab_4b_dr[quadidx][3])) * tab_4b_invdr[quadidx][3];
+
+    double a0 = 1.0-t0, a1 = 1.0-t1, a2 = 1.0-t2, a3 = 1.0-t3;
+    double b0 = t0,     b1 = t1,     b2 = t2,     b3 = t3;
+
+    int base = i0*stride0 + i1*stride1 + i2*stride2 + i3;
+
+    int idx[16];
+    idx[0]  = base;
+    idx[1]  = base + 1;
+    idx[2]  = base + stride2;
+    idx[3]  = idx[2] + 1;
+    idx[4]  = base + stride1;
+    idx[5]  = idx[4] + 1;
+    idx[6]  = idx[4] + stride2;
+    idx[7]  = idx[6] + 1;
+    idx[8]  = base + stride0;
+    idx[9]  = idx[8] + 1;
+    idx[10] = idx[8] + stride2;
+    idx[11] = idx[10] + 1;
+    idx[12] = idx[8] + stride1;
+    idx[13] = idx[12] + 1;
+    idx[14] = idx[12] + stride2;
+    idx[15] = idx[14] + 1;
+
+    double w[16];
+    w[0]  = a0*a1*a2*a3;
+    w[1]  = a0*a1*a2*b3;
+    w[2]  = a0*a1*b2*a3;
+    w[3]  = a0*a1*b2*b3;
+    w[4]  = a0*b1*a2*a3;
+    w[5]  = a0*b1*a2*b3;
+    w[6]  = a0*b1*b2*a3;
+    w[7]  = a0*b1*b2*b3;
+    w[8]  = b0*a1*a2*a3;
+    w[9]  = b0*a1*a2*b3;
+    w[10] = b0*a1*b2*a3;
+    w[11] = b0*a1*b2*b3;
+    w[12] = b0*b1*a2*a3;
+    w[13] = b0*b1*a2*b3;
+    w[14] = b0*b1*b2*a3;
+    w[15] = b0*b1*b2*b3;
+
+    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
+    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
+    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
+    const vector<double> & D2 = tab_coeffs_4B_blocks_flat[quadidx][3];
+    const vector<double> & D3 = tab_coeffs_4B_blocks_flat[quadidx][4];
+
+    for (int c=0; c<ncoeff; c++)
+    {
+        coeffE[c]  = 0.0;
+        coeffD0[c] = 0.0;
+        coeffD1[c] = 0.0;
+        coeffD2[c] = 0.0;
+        coeffD3[c] = 0.0;
+    }
+
+    for (int corner=0; corner<16; corner++)
+    {
+        size_t off = (size_t)idx[corner] * ncoeff;
+        double wc = w[corner];
+        for (int c=0; c<ncoeff; c++)
         {
-            double c000 = vals[i000][q];
-            double c001 = vals[i001][q];
-            double c010 = vals[i010][q];
-            double c011 = vals[i011][q];
-            double c100 = vals[i100][q];
-            double c101 = vals[i101][q];
-            double c110 = vals[i110][q];
-            double c111 = vals[i111][q];
-
-            double v00 = c000*(1.0-tz) + c001*tz;
-            double v01 = c010*(1.0-tz) + c011*tz;
-            double v10 = c100*(1.0-tz) + c101*tz;
-            double v11 = c110*(1.0-tz) + c111*tz;
-
-            double v0 = v00*(1.0-ty) + v01*ty;
-            double v1 = v10*(1.0-ty) + v11*ty;
-
-            return v0*(1.0-tx) + v1*tx;
-        };
-
-        coeffE [q] = interp(valsE);
-        coeffdA[q] = interp(valsA);
-        coeffdB[q] = interp(valsB);
-        coeffdC[q] = interp(valsC);
+            coeffE[c]  += wc * E [off+c];
+            coeffD0[c] += wc * D0[off+c];
+            coeffD1[c] += wc * D1[off+c];
+            coeffD2[c] += wc * D2[off+c];
+            coeffD3[c] += wc * D3[off+c];
+        }
     }
 }
 #endif

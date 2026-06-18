@@ -26,12 +26,19 @@ echo ""
 TAB_FLAG=""
 FINGERPRINT_FLAG=""
 
-if [[ "$1" == "TABULATION" ]]; then
-    TAB_FLAG="-DTABULATION"
-    echo "Enabling TABULATION compilation flag for ChIMES files"
-elif [[ "$1" == "FINGERPRINT" ]]; then
+
+if [[ "$1" == "FINGERPRINT" ]]; then
     FINGERPRINT_FLAG="-DFINGERPRINT"
     echo "Enabling FINGERPRINT compilation flag for ChIMES files"
+elif [[ "$1" == "TABULATION2" ]]; then
+    TAB_FLAG="-DTABULATION -DCHIMES_4B_TAB_2D"
+    echo "Enabling TABULATION compilation flag for ChIMES files"
+elif [[ "$1" == "TABULATION3" ]]; then
+    TAB_FLAG="-DTABULATION -DCHIMES_4B_TAB_3D"
+    echo "Enabling TABULATION compilation flag for ChIMES files"
+elif [[ "$1" == "TABULATION4" ]]; then
+    TAB_FLAG="-DTABULATION -DCHIMES_4B_TAB_4D"
+    echo "Enabling TABULATION compilation flag for ChIMES files"
 elif [[ -n "$1" ]]; then
     echo "ERROR: Invalid option '$1'. Use only one of: TABULATION or FINGERPRINT"
     exit 1
@@ -39,15 +46,22 @@ fi
 
 # Cleanup any previous installation
 
+echo "Lammps directory will be deleted and re-cloned/installed. Proceed? (y/n)"
+lammps="stable_29Aug2024_update1"
+read fresh
+if [[ "$fresh" == "n" ]] ; then
+    echo 'Will use pre-existing lammps build'
+else
+    echo 'Fresh compiling lammps'
 ./uninstall.sh
+mkdir -p build/${lammps}
+git clone --depth 1 --branch ${lammps} https://github.com/lammps/lammps.git build/${lammps}
+fi
 
 
 # Grab the specific stable branch of LAMMPS compaitbility has been tested for
-lammps="stable_29Aug2024_update1"
-mkdir -p build/${lammps}
 
 # Shallow clone only for the most recent commit (without full commit history)
-git clone --depth 1 --branch ${lammps} https://github.com/lammps/lammps.git build/${lammps}
 
 
 # Copy ChIMES files to correct locations
