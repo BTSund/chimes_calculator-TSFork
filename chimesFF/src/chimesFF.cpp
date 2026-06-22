@@ -1524,7 +1524,7 @@ void chimesFF::read_parameters(string paramfile)
 
     if (poly_orders[2] > 0)
     {
-        int nquads;
+        int nquads = 0;
         int tmp_idx;
         
         // Read parameters
@@ -1534,48 +1534,47 @@ void chimesFF::read_parameters(string paramfile)
         found_end = false;
     
                 while (!found_end)
+{
+    line = get_next_line(param_file);
+
+    if(line.find("ENDFILE") != string::npos)
+        break;
+
+    #ifdef TABULATION
+        if(line.find("4B COEFF TABLES:") != string::npos)
         {
-            line = get_next_line(param_file);
+            split_line(line, tmp_str_items);
 
-            if(line.find("ENDFILE") != string::npos)
-                break;
+            int ntab = stoi(tmp_str_items[3]);
 
-#ifdef TABULATION
-            if(line.find("4B COEFF TABLES:") != string::npos)
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
+
+            tabulate_4B_coeff = true;
+
+            for (int t=0; t<ntab; t++)
             {
+                line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
 
-                int ntab = stoi(tmp_str_items[3]);
-
-                if (rank == 0)
-                    cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
-
-                tabulate_4B_coeff = true;
-
-                for (int t=0; t<ntab; t++)
+                if (tmp_str_items.size() != 3)
                 {
-                    line = get_next_line(param_file);
-                    split_line(line, tmp_str_items);
-
-                    if (tmp_str_items.size() != 3)
-                    {
-                        cout << "ERROR: Expected line format:" << endl;
-                        cout << "       <quadidx> <datafile> <metafile>" << endl;
-                        cout << "Line: " << line << endl;
-                        exit(0);
-                    }
-
-                    int quadidx = stoi(tmp_str_items[0]);
-                    string datafile = param_file_path + "/" + tmp_str_items[1];
-                    string metafile = param_file_path + "/" + tmp_str_items[2];
-
-                    read_4B_coeff_meta(metafile, quadidx);
-                    read_4B_coeff_tab (datafile, quadidx);
+                    cout << "ERROR: Expected line format:" << endl;
+                    cout << "       <quadidx> <datafile> <metafile>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
                 }
-                continue;
+
+                int quadidx = stoi(tmp_str_items[0]);
+                string datafile = param_file_path + "/" + tmp_str_items[1];
+                string metafile = param_file_path + "/" + tmp_str_items[2];
+
+                read_4B_coeff_meta(metafile, quadidx);
+                read_4B_coeff_tab (datafile, quadidx);
             }
-#endif
-            line = get_next_line(param_file);
+            continue;
+        }
+    #endif
         
 			if(line.find("ENDFILE") != string::npos)
                 break;    
@@ -1743,31 +1742,36 @@ void chimesFF::read_parameters(string paramfile)
         }
         
         // Set up cutoffs ... First set to match 2-body, then read special if they exist
-        
         int atmtyp_1,  atmtyp_2,  atmtyp_3,  atmtyp_4;
         int pairtyp_1, pairtyp_2, pairtyp_3, pairtyp_4, pairtyp_5, pairtyp_6;
-        
+
         for(int i=0; i<nquads; i++) 
         {
+            if ((int)quad_params_atm_chems[i].size() < 4 ||
+                (int)quad_params_pair_typs[i].size() < 6)
+            {
+                if (rank == 0)
+                    cout << "WARNING: Skipping incomplete quad type " << i
+                        << " during cutoff setup" << endl;
+                continue;
+            }
+
             // Figure out the atom type index for each atom in the quadruplet type 
-                        
-            atmtyp_1 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][0]));    
-            atmtyp_2 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][1]));    
-            atmtyp_3 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][2]));    
-            atmtyp_4 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][3]));    
-                        
+            atmtyp_1 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][0]));
+            atmtyp_2 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][1]));
+            atmtyp_3 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][2]));
+            atmtyp_4 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][3]));
+
             // Figure out the corresponding 2-body pair type
-            
             pairtyp_1 = atom_int_pair_map[ atmtyp_1*natmtyps + atmtyp_2 ];
             pairtyp_2 = atom_int_pair_map[ atmtyp_1*natmtyps + atmtyp_3 ];
             pairtyp_3 = atom_int_pair_map[ atmtyp_1*natmtyps + atmtyp_4 ];
             pairtyp_4 = atom_int_pair_map[ atmtyp_2*natmtyps + atmtyp_3 ];
             pairtyp_5 = atom_int_pair_map[ atmtyp_2*natmtyps + atmtyp_4 ];
-            pairtyp_6 = atom_int_pair_map[ atmtyp_3*natmtyps + atmtyp_4 ];            
-    
-            // Set the default inner/outer cutoffs to the corresponding 2-body value                    
+            pairtyp_6 = atom_int_pair_map[ atmtyp_3*natmtyps + atmtyp_4 ];
 
-            chimes_4b_cutoff[i].resize(2);            
+            // Set the default inner/outer cutoffs to the corresponding 2-body value                    
+            chimes_4b_cutoff[i].resize(2);
 
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);
@@ -1775,13 +1779,13 @@ void chimesFF::read_parameters(string paramfile)
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_4][0]);
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_5][0]);
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_6][0]);              
-            
+
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_1][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_2][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);          
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_4][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_5][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_6][1]);                                              
+            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_6][1]);
         }
         
         param_file.seekg(0);
@@ -1801,38 +1805,69 @@ void chimesFF::read_parameters(string paramfile)
             if(line.find("SPECIAL 4B S_MAXIM:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Set the following special 4-body outer cutoffs: " << endl;
-                
+
                 if(tmp_str_items[3] == "ALL")
                 {
                     cutval = stod(tmp_str_items[4]);
-                                        
+
                     for(int i=0; i<nquads; i++)
-                    {                
+                    {
+                        if ((int)chimes_4b_cutoff[i].size() < 2 ||
+                            (int)chimes_4b_cutoff[i][1].size() < 6)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Skipping ALL special 4B S_MAXIM for incomplete quad type " << i << endl;
+                            continue;
+                        }
+
                         chimes_4b_cutoff[i][1][0] = cutval;
                         chimes_4b_cutoff[i][1][1] = cutval;
                         chimes_4b_cutoff[i][1][2] = cutval;
                         chimes_4b_cutoff[i][1][3] = cutval;
                         chimes_4b_cutoff[i][1][4] = cutval;
-                        chimes_4b_cutoff[i][1][5] = cutval;                                                      
+                        chimes_4b_cutoff[i][1][5] = cutval;
                     }
                 }
                 else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(6);
                     vector<double> cutoffval(6);
 
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
                         split_line(line, tmp_str_items);
-                        
-                        tmp_int = atom_idx_quad_map[distance(atom_typ_quad_map.begin(), find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]))];
+
+                        auto it = find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]);
+                        if (it == atom_typ_quad_map.end())
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Could not find SPECIAL 4B S_MAXIM quad name " << tmp_str_items[0] << endl;
+                            continue;
+                        }
+
+                        tmp_int = atom_idx_quad_map[distance(atom_typ_quad_map.begin(), it)];
+
+                        if (tmp_int < 0 || tmp_int >= nquads)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: SPECIAL 4B S_MAXIM quad index out of range: " << tmp_int << endl;
+                            continue;
+                        }
+
+                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 ||
+                            (int)chimes_4b_cutoff[tmp_int].size() < 2 ||
+                            (int)chimes_4b_cutoff[tmp_int][1].size() < 6)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Skipping SPECIAL 4B S_MAXIM for incomplete quad type " << tmp_int << endl;
+                            continue;
+                        }
 
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
@@ -1840,83 +1875,122 @@ void chimesFF::read_parameters(string paramfile)
                         pair_name[3] = tmp_str_items[4];
                         pair_name[4] = tmp_str_items[5];
                         pair_name[5] = tmp_str_items[6];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[7 ]);
                         cutoffval[1] = stod(tmp_str_items[8 ]);
                         cutoffval[2] = stod(tmp_str_items[9 ]);
                         cutoffval[3] = stod(tmp_str_items[10]);
                         cutoffval[4] = stod(tmp_str_items[11]);
                         cutoffval[5] = stod(tmp_str_items[12]);
-                        
-                        vector<bool>   disqualified(6,false);
-                        
+
+                        vector<bool> disqualified(6,false);
+
                         chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
                         chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
-                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];    
+                        chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
                         chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[3], disqualified) ] = cutoffval[3];
                         chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[4], disqualified) ] = cutoffval[4];
                         chimes_4b_cutoff[tmp_int][1][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[5], disqualified) ] = cutoffval[5];
-					}
+                    }
                 }
-                
+
                 for(int i=0; i<nquads; i++)
-                {                
+                {
+                    if ((int)chimes_4b_cutoff[i].size() < 2 ||
+                        (int)chimes_4b_cutoff[i][1].size() < 6)
+                        continue;
+
                     if (rank == 0)
-                        cout << "chimesFF: " << "\t" << i << " " 
-                        << chimes_4b_cutoff[i][1][0] << " " 
-                        << chimes_4b_cutoff[i][1][1] << " " 
-                        << chimes_4b_cutoff[i][1][2] << " " 
-                        << chimes_4b_cutoff[i][1][3] << " " 
-                        << chimes_4b_cutoff[i][1][4] << " " 
-                        << chimes_4b_cutoff[i][1][5] << endl;
-                }                
+                        cout << "chimesFF: " << "\t" << i << " "
+                            << chimes_4b_cutoff[i][1][0] << " "
+                            << chimes_4b_cutoff[i][1][1] << " "
+                            << chimes_4b_cutoff[i][1][2] << " "
+                            << chimes_4b_cutoff[i][1][3] << " "
+                            << chimes_4b_cutoff[i][1][4] << " "
+                            << chimes_4b_cutoff[i][1][5] << endl;
+                }
             }
 
             if(line.find("SPECIAL 4B S_MINIM:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Set the following special 4-body inner cutoffs: " << endl;
-                
+
                 if(tmp_str_items[3] == "ALL")
                 {
                     cutval = stod(tmp_str_items[4]);
-                    
+
                     for(int i=0; i<nquads; i++)
-                    {                
+                    {
+                        if ((int)chimes_4b_cutoff[i].size() < 2 ||
+                            (int)chimes_4b_cutoff[i][0].size() < 6)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Skipping ALL special 4B S_MINIM for incomplete quad type " << i << endl;
+                            continue;
+                        }
+
                         chimes_4b_cutoff[i][0][0] = cutval;
                         chimes_4b_cutoff[i][0][1] = cutval;
                         chimes_4b_cutoff[i][0][2] = cutval;
                         chimes_4b_cutoff[i][0][3] = cutval;
                         chimes_4b_cutoff[i][0][4] = cutval;
-                        chimes_4b_cutoff[i][0][5] = cutval;                         
+                        chimes_4b_cutoff[i][0][5] = cutval;
                     }
                 }
                 else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(6);
                     vector<double> cutoffval(6);
 
-					for(int i=0; i<nquads; i++)
-					{
-						chimes_4b_cutoff[i][0][0] = -1.0;
-						chimes_4b_cutoff[i][0][1] = -1.0;
-						chimes_4b_cutoff[i][0][2] = -1.0;
-						chimes_4b_cutoff[i][0][3] = -1.0;
-						chimes_4b_cutoff[i][0][4] = -1.0;
-						chimes_4b_cutoff[i][0][5] = -1.0;
-					}
+                    for(int i=0; i<nquads; i++)
+                    {
+                        if ((int)chimes_4b_cutoff[i].size() >= 2 &&
+                            (int)chimes_4b_cutoff[i][0].size() >= 6)
+                        {
+                            chimes_4b_cutoff[i][0][0] = -1.0;
+                            chimes_4b_cutoff[i][0][1] = -1.0;
+                            chimes_4b_cutoff[i][0][2] = -1.0;
+                            chimes_4b_cutoff[i][0][3] = -1.0;
+                            chimes_4b_cutoff[i][0][4] = -1.0;
+                            chimes_4b_cutoff[i][0][5] = -1.0;
+                        }
+                    }
 
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
                         split_line(line, tmp_str_items);
-                        
-                        tmp_int = atom_idx_quad_map[distance(atom_typ_quad_map.begin(), find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]))];
+
+                        auto it = find(atom_typ_quad_map.begin(), atom_typ_quad_map.end(), tmp_str_items[0]);
+                        if (it == atom_typ_quad_map.end())
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Could not find SPECIAL 4B S_MINIM quad name " << tmp_str_items[0] << endl;
+                            continue;
+                        }
+
+                        tmp_int = atom_idx_quad_map[distance(atom_typ_quad_map.begin(), it)];
+
+                        if (tmp_int < 0 || tmp_int >= nquads)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: SPECIAL 4B S_MINIM quad index out of range: " << tmp_int << endl;
+                            continue;
+                        }
+
+                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 ||
+                            (int)chimes_4b_cutoff[tmp_int].size() < 2 ||
+                            (int)chimes_4b_cutoff[tmp_int][0].size() < 6)
+                        {
+                            if (rank == 0)
+                                cout << "WARNING: Skipping SPECIAL 4B S_MINIM for incomplete quad type " << tmp_int << endl;
+                            continue;
+                        }
 
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
@@ -1924,37 +1998,41 @@ void chimesFF::read_parameters(string paramfile)
                         pair_name[3] = tmp_str_items[4];
                         pair_name[4] = tmp_str_items[5];
                         pair_name[5] = tmp_str_items[6];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[7 ]);
                         cutoffval[1] = stod(tmp_str_items[8 ]);
                         cutoffval[2] = stod(tmp_str_items[9 ]);
                         cutoffval[3] = stod(tmp_str_items[10]);
                         cutoffval[4] = stod(tmp_str_items[11]);
                         cutoffval[5] = stod(tmp_str_items[12]);
-                        
-                        vector<bool>   disqualified(6,false);
-                        
+
+                        vector<bool> disqualified(6,false);
+
                         chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
                         chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
-                        chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];    
+                        chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
                         chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[3], disqualified) ] = cutoffval[3];
                         chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[4], disqualified) ] = cutoffval[4];
-                        chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[5], disqualified) ] = cutoffval[5];                     
+                        chimes_4b_cutoff[tmp_int][0][ get_index_if(quad_params_pair_typs[tmp_int], pair_name[5], disqualified) ] = cutoffval[5];
                     }
                 }
-                
+
                 for(int i=0; i<nquads; i++)
-                {                
+                {
+                    if ((int)chimes_4b_cutoff[i].size() < 2 ||
+                        (int)chimes_4b_cutoff[i][0].size() < 6)
+                        continue;
+
                     if (rank == 0)
-                        cout << "chimesFF: " << "\t" << i << " " 
-                        << chimes_4b_cutoff[i][1][0] << " " 
-                        << chimes_4b_cutoff[i][1][1] << " " 
-                        << chimes_4b_cutoff[i][1][2] << " " 
-                        << chimes_4b_cutoff[i][1][3] << " " 
-                        << chimes_4b_cutoff[i][1][4] << " " 
-                        << chimes_4b_cutoff[i][1][5] << endl;
-                }                
-            }            
+                        cout << "chimesFF: " << "\t" << i << " "
+                            << chimes_4b_cutoff[i][0][0] << " "
+                            << chimes_4b_cutoff[i][0][1] << " "
+                            << chimes_4b_cutoff[i][0][2] << " "
+                            << chimes_4b_cutoff[i][0][3] << " "
+                            << chimes_4b_cutoff[i][0][4] << " "
+                            << chimes_4b_cutoff[i][0][5] << endl;
+                }
+            }      
         }    
     }
     
