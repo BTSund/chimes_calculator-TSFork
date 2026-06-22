@@ -513,21 +513,9 @@ void chimesFF::build_runtime_canonical_maps_4B(
     int *runtime_to_canon
 )
 {
-    struct PairInfo
-    {
-        int canonical_slot;
-        int runtime_slot;
-        std::string pair_type;
-        double dist;
-    };
-
-    // Build parameter->runtime map first
     int param_to_runtime[6];
     for (int r = 0; r < 6; r++)
         param_to_runtime[mapped_pair_idx[r]] = r;
-
-    // For each canonical slot, determine current runtime slot
-    std::vector<PairInfo> entries(6);
 
     for (int c = 0; c < 6; c++)
     {
@@ -538,31 +526,8 @@ void chimesFF::build_runtime_canonical_maps_4B(
             pslot = c;
 
         int rslot = param_to_runtime[pslot];
-
-        entries[c].canonical_slot = c;
-        entries[c].runtime_slot   = rslot;
-        if ((int)tab_4b_canonical_pair_types[quadidx].size() == 6)
-            entries[c].pair_type  = tab_4b_canonical_pair_types[quadidx][c];
-        else
-            entries[c].pair_type  = quad_params_pair_typs[quadidx][pslot];
-        entries[c].dist = dx[rslot];
-    }
-
-    // Keep pair-type group order fixed, but for same-type groups sort by descending distance
-    std::stable_sort(entries.begin(), entries.end(),
-        [](const PairInfo &a, const PairInfo &b)
-        {
-            if (a.pair_type != b.pair_type)
-                return a.pair_type < b.pair_type;
-            if (a.dist != b.dist)
-                return a.dist > b.dist;
-            return a.canonical_slot < b.canonical_slot;
-        });
-
-    for (int c = 0; c < 6; c++)
-    {
-        canon_to_runtime[c] = entries[c].runtime_slot;
-        runtime_to_canon[entries[c].runtime_slot] = c;
+        canon_to_runtime[c] = rslot;
+        runtime_to_canon[rslot] = c;
     }
 }
 #endif
