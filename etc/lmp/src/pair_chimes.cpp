@@ -42,6 +42,7 @@
 #include <sstream>
 #include <string>
 #include <fstream>
+#include <algorithm>
 
 using namespace LAMMPS_NS;
 
@@ -496,6 +497,36 @@ void PairCHIMES::build_mb_neighlists()
 		}
 	}
 
+// Add this at the end of build_mb_neighlists()
+// Include <algorithm> at the top of your file if not already present
+
+std::sort(neighborlist_4mers.begin(), neighborlist_4mers.end(), 
+    [&](const std::vector<int>& a, const std::vector<int>& b) {
+        
+        // 1. Get the elemental types for quadruplet A
+        int types_A[4] = { chimes_type[atom->type[a[0]]-1], 
+                           chimes_type[atom->type[a[1]]-1], 
+                           chimes_type[atom->type[a[2]]-1], 
+                           chimes_type[atom->type[a[3]]-1] };
+        std::sort(types_A, types_A + 4); // Standardize order (e.g., C-H-O-N -> C-H-N-O)
+
+        // 2. Get the elemental types for quadruplet B
+        int types_B[4] = { chimes_type[atom->type[b[0]]-1], 
+                           chimes_type[atom->type[b[1]]-1], 
+                           chimes_type[atom->type[b[2]]-1], 
+                           chimes_type[atom->type[b[3]]-1] };
+        std::sort(types_B, types_B + 4);
+
+        // 3. Compare the signatures to group identical quadruplet types together
+        for (int i = 0; i < 4; i++) {
+            if (types_A[i] != types_B[i]) {
+                return types_A[i] < types_B[i];
+            }
+        }
+        return false;
+    }
+);
+
 }
 
 void PairCHIMES::compute(int eflag, int vflag)
@@ -807,12 +838,48 @@ void PairCHIMES::compute(int eflag, int vflag)
 				chimes_calculator.compute_4B( dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp, tmp_force_scalar_4b, tmp_dist_4b, tmp_FP && valid_order);
 			} else {
 			#endif
-				#ifdef TABULATION
-            if (chimes_calculator.tabulate_4B_coeff)
-                chimes_calculator.compute_4B_tab_coeff(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp);
+#ifdef TABULATION
+            if (chimes_calculator.tabulate_4B_svd4x2)
+                chimes_calculator.compute_4B_svd4x2_tab(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            else if (chimes_calculator.tabulate_4B_svd3x3)
+                chimes_calculator.compute_4B_svd3x3_tab(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            else if (chimes_calculator.tabulate_4B_coeff)
+                chimes_calculator.compute_4B_tab_coeff(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
             else
 #endif
-                chimes_calculator.compute_4B(dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp);
+                chimes_calculator.compute_4B(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
 			#ifdef FINGERPRINT
 			}
 			#endif

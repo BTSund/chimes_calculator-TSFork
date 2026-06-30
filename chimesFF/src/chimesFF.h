@@ -79,13 +79,71 @@ inline chimes3BTmp::chimes3BTmp(int poly_order) : Tn_ij(poly_order+1), Tn_ik(pol
 class chimes4BTmp
 {
 public:
-    inline chimes4BTmp(int poly_order) ;
-    inline void resize(int poly_order) ;
+    inline chimes4BTmp(int poly_order);
+    inline void resize(int poly_order);
 
-    vector<double>  Tn_ij, Tn_ik, Tn_il, Tn_jk, Tn_jl, Tn_kl;   // The Chebyshev polymonials
-    vector<double>  Tnd_ij,Tnd_ik, Tnd_il, Tnd_jk, Tnd_jl, Tnd_kl ;  // The Chebyshev polymonial derivatives
-} ;
+    vector<double>  Tn_ij, Tn_ik, Tn_il, Tn_jk, Tn_jl, Tn_kl;
+    vector<double>  Tnd_ij,Tnd_ik, Tnd_il, Tnd_jk, Tnd_jl, Tnd_kl;
 
+
+#ifdef TABULATION
+    // Scratch for SVD 4|2.
+    std::vector<double> svd4_L;
+    std::vector<double> svd4_L0;
+    std::vector<double> svd4_L1;
+    std::vector<double> svd4_L2;
+    std::vector<double> svd4_L3;
+
+    std::vector<double> svd4_R;
+    std::vector<double> svd4_R0;
+    std::vector<double> svd4_R1;
+
+    inline void resize_svd4_rank(int R)
+    {
+        if ((int)svd4_L.size() < R)
+        {
+            svd4_L.resize(R);
+            svd4_L0.resize(R);
+            svd4_L1.resize(R);
+            svd4_L2.resize(R);
+            svd4_L3.resize(R);
+
+            svd4_R.resize(R);
+            svd4_R0.resize(R);
+            svd4_R1.resize(R);
+        }
+    }
+#endif
+#ifdef TABULATION
+    // Scratch buffers for SVD 3|3 4B tabulation.
+    // These avoid heap allocations inside compute_4B_svd3x3_tab().
+    vector<double> svd_X;
+    vector<double> svd_X0;
+    vector<double> svd_X1;
+    vector<double> svd_X2;
+
+    vector<double> svd_Y;
+    vector<double> svd_Y0;
+    vector<double> svd_Y1;
+    vector<double> svd_Y2;
+
+    inline void resize_svd_rank(int R)
+    {
+        if ((int)svd_X.size() < R)
+        {
+            svd_X.resize(R);
+            svd_X0.resize(R);
+            svd_X1.resize(R);
+            svd_X2.resize(R);
+
+            svd_Y.resize(R);
+            svd_Y0.resize(R);
+            svd_Y1.resize(R);
+            svd_Y2.resize(R);
+        }
+    }
+#endif
+};
 inline chimes4BTmp::chimes4BTmp(int poly_order) : Tn_ij(poly_order+1), Tn_ik(poly_order+1), Tn_il(poly_order+1),
                                                   Tn_jk(poly_order+1), Tn_jl(poly_order+1), Tn_kl(poly_order+1),
                                                   Tnd_ij(poly_order+1), Tnd_ik(poly_order+1), Tnd_il(poly_order+1),
@@ -228,6 +286,70 @@ public:
     
 
 #ifdef TABULATION
+    // -------------------------------------------------------------------------
+    // SVD 4|2 4-body tabulation
+    // -------------------------------------------------------------------------
+
+    bool tabulate_4B_svd4x2 = false;
+
+    struct SVD4x2SideTable
+    {
+        int ndim = 0;       // 4 for left, 2 for right
+        int rank = 0;
+        int ngrid = 0;
+
+        int stride[4] = {0, 0, 0, 0};
+
+        double r0[4]    = {0.0, 0.0, 0.0, 0.0};
+        double dr[4]    = {0.0, 0.0, 0.0, 0.0};
+        double invdr[4] = {0.0, 0.0, 0.0, 0.0};
+
+        // block[0] = values
+        // block[1] = derivative wrt local dim 0
+        // ...
+        // left table has 5 blocks, right table has 3 blocks.
+        std::vector<std::vector<float>> block;
+    };
+
+    std::vector<SVD4x2SideTable> tab_4b_svd4x2_left;
+    std::vector<SVD4x2SideTable> tab_4b_svd4x2_right;
+
+    std::vector<int> tab_4b_svd4x2_rank;
+    std::vector<std::vector<int>> tab_4b_svd4x2_canon_to_param;
+    std::vector<std::vector<std::string>> tab_4b_svd4x2_canonical_pair_types;
+
+    void read_4B_svd4x2_meta(std::string meta_file, int quadidx);
+    void read_4B_svd4x2_tab(std::string data_file, int quadidx, bool left_side);
+
+    void interpolateSVD4x2SideLinear(
+        const SVD4x2SideTable &tab,
+        const double *rquery,
+        double **out_blocks
+    );
+
+    void compute_4B_svd4x2_tab(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_svd4x2_tab(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp,
+        std::vector<double> & force_scalar_in
+    );
+#endif
+
+#ifdef TABULATION
     bool tabulate_4B_coeff = false;
 
     // Canonical ordering metadata
@@ -310,6 +432,77 @@ public:
     );
 
     void compute_4B_tab_coeff(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp,
+        std::vector<double> & force_scalar_in
+    );
+#endif
+
+#ifdef TABULATION
+    // -------------------------------------------------------------------------
+    // SVD 3|3 4-body tabulation
+    // -------------------------------------------------------------------------
+
+    bool tabulate_4B_svd3x3 = false;
+
+    struct SVD3x3SideTable
+    {
+        int rank = 0;
+        int ngrid = 0;
+
+        int stride0 = 0;
+        int stride1 = 0;
+        int stride2 = 1;
+
+        double r0[3]    = {0.0, 0.0, 0.0};
+        double dr[3]    = {0.0, 0.0, 0.0};
+        double invdr[3] = {0.0, 0.0, 0.0};
+
+        // Store table data as float to reduce memory bandwidth.
+        // Interpolation and dot products still accumulate in double.
+        std::vector<float> val;
+        std::vector<float> d0;
+        std::vector<float> d1;
+        std::vector<float> d2;
+    };
+
+    // One left/right table per quad type
+    std::vector<SVD3x3SideTable> tab_4b_svd3x3_left;
+    std::vector<SVD3x3SideTable> tab_4b_svd3x3_right;
+
+    // Metadata
+    std::vector<int> tab_4b_svd3x3_rank;
+    std::vector<std::vector<int>> tab_4b_svd3x3_canon_to_param;
+    std::vector<std::vector<std::string>> tab_4b_svd3x3_canonical_pair_types;
+
+    void read_4B_svd3x3_meta(std::string meta_file, int quadidx);
+    void read_4B_svd3x3_tab(std::string data_file, int quadidx, bool left_side);
+
+    void interpolateSVD3x3SideLinear(
+        const SVD3x3SideTable &tab,
+        const double *rquery,
+        double *val,
+        double *d0,
+        double *d1,
+        double *d2
+    );
+
+    void compute_4B_svd3x3_tab(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_svd3x3_tab(
         const std::vector<double> & dx,
         const std::vector<double> & dr,
         const std::vector<int> & typ_idxs,

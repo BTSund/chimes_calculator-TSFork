@@ -94,6 +94,17 @@ string get_directory_path(const string& file_path)
         return ""; // If no directory path is available
 }
 
+static string join_path_chimes(const string &dir, const string &file)
+{
+    if (dir.empty())
+        return file;
+
+    if (dir.back() == '/' || dir.back() == '\\')
+        return dir + file;
+
+    return dir + "/" + file;
+}
+
 chimesFF::chimesFF()
 {
     natmtyps = 0;
@@ -104,6 +115,9 @@ chimesFF::chimesFF()
 #ifdef TABULATION
     tabulate_2B = false;
     tabulate_3B = false;
+    tabulate_4B_coeff = false;
+    tabulate_4B_svd3x3 = false;
+    tabulate_4B_svd4x2 = false;
 #endif
     
     fcut_type = fcutType::CUBIC ;
@@ -501,6 +515,859 @@ void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
         cout << "chimesFF: \tnretained:   " << nretained << endl;
         cout << "chimesFF: \tncoeff:      " << ncoeff << endl;
     }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_svd4x2_meta(string meta_file, int quadidx)
+{
+    ifstream in(meta_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B SVD4X2 metadata file: "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_svd4x2_rank.size() <= quadidx)
+    {
+        tab_4b_svd4x2_rank.resize(quadidx+1, 0);
+        tab_4b_svd4x2_canon_to_param.resize(quadidx+1);
+        tab_4b_svd4x2_canonical_pair_types.resize(quadidx+1);
+        tab_4b_svd4x2_left.resize(quadidx+1);
+        tab_4b_svd4x2_right.resize(quadidx+1);
+    }
+
+    string line;
+    vector<string> items;
+
+    int rank_read = -1;
+    vector<int> canon_to_param;
+    vector<string> canonical_pair_types;
+
+    while (getline(in, line))
+    {
+        int n = split_line(line, items);
+        if (n == 0) continue;
+
+        if (items[0] == "rank")
+        {
+            rank_read = stoi(items[1]);
+        }
+        else if (items[0] == "canon_to_param")
+        {
+            canon_to_param.clear();
+            for (int i=1; i<n; i++)
+                canon_to_param.push_back(stoi(items[i]));
+        }
+        else if (
+            items[0] == "pair_types_canonical" ||
+            items[0] == "canonical_pair_types"
+        )
+        {
+            canonical_pair_types.clear();
+            for (int i=1; i<n; i++)
+                canonical_pair_types.push_back(items[i]);
+        }
+    }
+
+    in.close();
+
+    if (rank_read <= 0)
+    {
+        cout << "ERROR: Invalid or missing rank in " << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)canon_to_param.size() != 6)
+    {
+        cout << "ERROR: Missing or invalid canon_to_param in "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    tab_4b_svd4x2_rank[quadidx] = rank_read;
+    tab_4b_svd4x2_canon_to_param[quadidx] = canon_to_param;
+    tab_4b_svd4x2_canonical_pair_types[quadidx] = canonical_pair_types;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B SVD4X2 metadata for quad type "
+             << quadidx << endl;
+        cout << "chimesFF: \trank = " << rank_read << endl;
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_svd3x3_meta(string meta_file, int quadidx)
+{
+    ifstream in(meta_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B SVD3X3 metadata file: "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_svd3x3_rank.size() <= quadidx)
+    {
+        tab_4b_svd3x3_rank.resize(quadidx+1, 0);
+        tab_4b_svd3x3_canon_to_param.resize(quadidx+1);
+        tab_4b_svd3x3_canonical_pair_types.resize(quadidx+1);
+        tab_4b_svd3x3_left.resize(quadidx+1);
+        tab_4b_svd3x3_right.resize(quadidx+1);
+    }
+
+    string line;
+    vector<string> items;
+
+    int rank_read = -1;
+    vector<int> canon_to_param;
+    vector<string> canonical_pair_types;
+
+    while (getline(in, line))
+    {
+        int n = split_line(line, items);
+        if (n == 0) continue;
+
+        if (items[0] == "rank")
+        {
+            rank_read = stoi(items[1]);
+        }
+        else if (items[0] == "canon_to_param")
+        {
+            canon_to_param.clear();
+            for (int i=1; i<n; i++)
+                canon_to_param.push_back(stoi(items[i]));
+        }
+        else if (
+            items[0] == "pair_types_canonical" ||
+            items[0] == "canonical_pair_types"
+        )
+        {
+            canonical_pair_types.clear();
+            for (int i=1; i<n; i++)
+                canonical_pair_types.push_back(items[i]);
+        }
+    }
+
+    in.close();
+
+    if (rank_read <= 0)
+    {
+        cout << "ERROR: Invalid or missing rank in " << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)canon_to_param.size() != 6)
+    {
+        cout << "ERROR: Missing or invalid canon_to_param in "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    tab_4b_svd3x3_rank[quadidx] = rank_read;
+    tab_4b_svd3x3_canon_to_param[quadidx] = canon_to_param;
+    tab_4b_svd3x3_canonical_pair_types[quadidx] = canonical_pair_types;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B SVD3X3 metadata for quad type "
+             << quadidx << endl;
+        cout << "chimesFF: \trank = " << rank_read << endl;
+        cout << "chimesFF: \tcanon_to_param:";
+        for (int i=0; i<6; i++)
+            cout << " " << canon_to_param[i];
+        cout << endl;
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_svd4x2_tab(string data_file, int quadidx, bool left_side)
+{
+    ifstream in(data_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B SVD4X2 table file: "
+             << data_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_svd4x2_rank.size() <= quadidx ||
+        tab_4b_svd4x2_rank[quadidx] <= 0)
+    {
+        cout << "ERROR: Must read SVD4X2 metadata before data file for quad type "
+             << quadidx << endl;
+        exit(0);
+    }
+
+    const int R = tab_4b_svd4x2_rank[quadidx];
+    const int ndim = left_side ? 4 : 2;
+    const int nblocks = ndim + 1;
+
+    string line;
+    vector<string> items;
+
+    line = get_next_line(in);
+    int nrows = stoi(line);
+
+    int ngrid;
+    if (ndim == 4)
+        ngrid = (int)round(sqrt(sqrt((double)nrows)));
+    else
+        ngrid = (int)round(sqrt((double)nrows));
+
+    int check = 1;
+    for (int d=0; d<ndim; d++)
+        check *= ngrid;
+
+    if (check != nrows)
+    {
+        cout << "ERROR: SVD4X2 table row count incompatible with ndim="
+             << ndim << ": " << nrows << endl;
+        exit(0);
+    }
+
+    SVD4x2SideTable &tab =
+        left_side ? tab_4b_svd4x2_left[quadidx]
+                  : tab_4b_svd4x2_right[quadidx];
+
+    tab.ndim = ndim;
+    tab.rank = R;
+    tab.ngrid = ngrid;
+
+    if (ndim == 4)
+    {
+        tab.stride[0] = ngrid*ngrid*ngrid;
+        tab.stride[1] = ngrid*ngrid;
+        tab.stride[2] = ngrid;
+        tab.stride[3] = 1;
+    }
+    else
+    {
+        tab.stride[0] = ngrid;
+        tab.stride[1] = 1;
+        tab.stride[2] = 0;
+        tab.stride[3] = 0;
+    }
+
+    tab.block.resize(nblocks);
+    for (int b=0; b<nblocks; b++)
+        tab.block[b].resize((size_t)nrows * (size_t)R);
+
+    for (int row=0; row<nrows; row++)
+    {
+        line = get_next_line(in);
+        int n = split_line(line, items);
+
+        int expected = ndim + nblocks*R;
+        if (n != expected)
+        {
+            cout << "ERROR: Expected " << expected
+                 << " entries in SVD4X2 row, got " << n << endl;
+            cout << "Line: " << line << endl;
+            exit(0);
+        }
+
+        double x[4] = {0.0,0.0,0.0,0.0};
+        for (int d=0; d<ndim; d++)
+            x[d] = stod(items[d]);
+
+        if (row == 0)
+        {
+            for (int d=0; d<ndim; d++)
+                tab.r0[d] = x[d];
+        }
+
+        for (int d=0; d<ndim; d++)
+        {
+            if (row == tab.stride[d])
+                tab.dr[d] = x[d] - tab.r0[d];
+        }
+
+        size_t off = (size_t)row * (size_t)R;
+
+        int offset = ndim;
+        for (int b=0; b<nblocks; b++)
+        {
+            for (int p=0; p<R; p++)
+                tab.block[b][off+p] = static_cast<float>(stod(items[offset + b*R + p]));
+        }
+    }
+
+    in.close();
+
+    for (int d=0; d<ndim; d++)
+    {
+        if (tab.dr[d] <= 0.0)
+        {
+            cout << "ERROR: Invalid SVD4X2 grid spacing in "
+                 << data_file << " dim " << d << endl;
+            exit(0);
+        }
+
+        tab.invdr[d] = 1.0 / tab.dr[d];
+    }
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B SVD4X2 "
+             << (left_side ? "left 4D" : "right 2D")
+             << " table for quad type " << quadidx << endl;
+        cout << "chimesFF: \tfile  = " << data_file << endl;
+        cout << "chimesFF: \tndim  = " << ndim << endl;
+        cout << "chimesFF: \tngrid = " << ngrid << endl;
+        cout << "chimesFF: \trank  = " << R << endl;
+        cout << "chimesFF: \tnrows = " << nrows << endl;
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::interpolateSVD4x2SideLinear(
+    const SVD4x2SideTable &tab,
+    const double *rquery,
+    double **out_blocks
+)
+{
+    const int ndim = tab.ndim;
+    const int R = tab.rank;
+    const int ngrid = tab.ngrid;
+    const int nblocks = ndim + 1;
+
+    int i[4] = {0,0,0,0};
+    double t[4] = {0.0,0.0,0.0,0.0};
+
+    for (int d=0; d<ndim; d++)
+    {
+        i[d] = (int)((rquery[d] - tab.r0[d]) * tab.invdr[d]);
+
+        if (i[d] < 0) i[d] = 0;
+        if (i[d] > ngrid-2) i[d] = ngrid-2;
+
+        t[d] = (rquery[d] - (tab.r0[d] + i[d]*tab.dr[d])) * tab.invdr[d];
+
+        if (t[d] < 0.0) t[d] = 0.0;
+        if (t[d] > 1.0) t[d] = 1.0;
+    }
+
+    for (int b=0; b<nblocks; b++)
+    {
+        double *out = out_blocks[b];
+
+        for (int p=0; p<R; p++)
+            out[p] = 0.0;
+    }
+
+    const int ncorners = 1 << ndim;
+
+    for (int corner=0; corner<ncorners; corner++)
+    {
+        double w = 1.0;
+        int idx = 0;
+
+        for (int d=0; d<ndim; d++)
+        {
+            int bit = (corner >> d) & 1;
+            int id = i[d] + bit;
+            w *= bit ? t[d] : (1.0 - t[d]);
+            idx += id * tab.stride[d];
+        }
+
+        size_t off = (size_t)idx * (size_t)R;
+
+        for (int b=0; b<nblocks; b++)
+        {
+            const float *src = tab.block[b].data() + off;
+            double *out = out_blocks[b];
+
+            for (int p=0; p<R; p++)
+                out[p] += w * (double)src[p];
+        }
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_svd3x3_tab(string data_file, int quadidx, bool left_side)
+{
+    ifstream in(data_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B SVD3X3 table file: "
+             << data_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_svd3x3_rank.size() <= quadidx ||
+        tab_4b_svd3x3_rank[quadidx] <= 0)
+    {
+        cout << "ERROR: Must read SVD3X3 metadata before data file for quad type "
+             << quadidx << endl;
+        exit(0);
+    }
+
+    int R = tab_4b_svd3x3_rank[quadidx];
+
+    string line;
+    vector<string> items;
+
+    line = get_next_line(in);
+    int nrows = stoi(line);
+
+    int ngrid = (int)round(cbrt((double)nrows));
+    if (ngrid * ngrid * ngrid != nrows)
+    {
+        cout << "ERROR: SVD3X3 table row count is not a perfect cube: "
+             << nrows << endl;
+        exit(0);
+    }
+
+    SVD3x3SideTable &tab =
+        left_side ? tab_4b_svd3x3_left[quadidx]
+                  : tab_4b_svd3x3_right[quadidx];
+
+    tab.rank = R;
+    tab.ngrid = ngrid;
+    tab.stride0 = ngrid * ngrid;
+    tab.stride1 = ngrid;
+    tab.stride2 = 1;
+
+    size_t total = (size_t)nrows * R;
+
+    tab.val.resize(total);
+    tab.d0.resize(total);
+    tab.d1.resize(total);
+    tab.d2.resize(total);
+
+    for (int row=0; row<nrows; row++)
+    {
+        line = get_next_line(in);
+        int n = split_line(line, items);
+
+        int expected = 3 + 4*R;
+        if (n != expected)
+        {
+            cout << "ERROR: Expected " << expected
+                 << " entries in SVD3X3 row, got " << n << endl;
+            cout << "Line: " << line << endl;
+            exit(0);
+        }
+
+        double x0 = stod(items[0]);
+        double x1 = stod(items[1]);
+        double x2 = stod(items[2]);
+
+        if (row == 0)
+        {
+            tab.r0[0] = x0;
+            tab.r0[1] = x1;
+            tab.r0[2] = x2;
+        }
+
+        if (row == tab.stride0)
+            tab.dr[0] = x0 - tab.r0[0];
+
+        if (row == tab.stride1)
+            tab.dr[1] = x1 - tab.r0[1];
+
+        if (row == 1)
+            tab.dr[2] = x2 - tab.r0[2];
+
+        size_t off = (size_t)row * R;
+
+        int start_val = 3;
+        int start_d0  = start_val + R;
+        int start_d1  = start_d0  + R;
+        int start_d2  = start_d1  + R;
+
+        for (int p=0; p<R; p++)
+        {
+            tab.val[off+p] = stod(items[start_val+p]);
+            tab.d0 [off+p] = stod(items[start_d0 +p]);
+            tab.d1 [off+p] = stod(items[start_d1 +p]);
+            tab.d2 [off+p] = stod(items[start_d2 +p]);
+        }
+    }
+
+    in.close();
+
+    for (int d=0; d<3; d++)
+    {
+        if (tab.dr[d] <= 0.0)
+        {
+            cout << "ERROR: Invalid grid spacing in SVD3X3 table "
+                 << data_file << " dim " << d << endl;
+            exit(0);
+        }
+
+        tab.invdr[d] = 1.0 / tab.dr[d];
+    }
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B SVD3X3 "
+             << (left_side ? "left" : "right")
+             << " table for quad type " << quadidx << endl;
+        cout << "chimesFF: \tfile  = " << data_file << endl;
+        cout << "chimesFF: \tngrid = " << ngrid << endl;
+        cout << "chimesFF: \trank  = " << R << endl;
+        cout << "chimesFF: \tnrows = " << nrows << endl;
+    }
+}
+#endif
+#ifdef TABULATION
+void chimesFF::interpolateSVD3x3SideLinear(
+    const SVD3x3SideTable &tab,
+    const double *rquery,
+    double *val,
+    double *d0,
+    double *d1,
+    double *d2
+)
+{
+    const int R = tab.rank;
+    const int ngrid = tab.ngrid;
+
+    int i0 = (int)((rquery[0] - tab.r0[0]) * tab.invdr[0]);
+    int i1 = (int)((rquery[1] - tab.r0[1]) * tab.invdr[1]);
+    int i2 = (int)((rquery[2] - tab.r0[2]) * tab.invdr[2]);
+
+    if (i0 < 0) i0 = 0;
+    if (i1 < 0) i1 = 0;
+    if (i2 < 0) i2 = 0;
+
+    if (i0 > ngrid-2) i0 = ngrid-2;
+    if (i1 > ngrid-2) i1 = ngrid-2;
+    if (i2 > ngrid-2) i2 = ngrid-2;
+
+    double t0 = (rquery[0] - (tab.r0[0] + i0*tab.dr[0])) * tab.invdr[0];
+    double t1 = (rquery[1] - (tab.r0[1] + i1*tab.dr[1])) * tab.invdr[1];
+    double t2 = (rquery[2] - (tab.r0[2] + i2*tab.dr[2])) * tab.invdr[2];
+
+    if (t0 < 0.0) t0 = 0.0;
+    if (t1 < 0.0) t1 = 0.0;
+    if (t2 < 0.0) t2 = 0.0;
+
+    if (t0 > 1.0) t0 = 1.0;
+    if (t1 > 1.0) t1 = 1.0;
+    if (t2 > 1.0) t2 = 1.0;
+
+    const double a0 = 1.0 - t0;
+    const double a1 = 1.0 - t1;
+    const double a2 = 1.0 - t2;
+
+    const double b0 = t0;
+    const double b1 = t1;
+    const double b2 = t2;
+
+    const int idx000 = i0*tab.stride0 + i1*tab.stride1 + i2;
+    const int idx001 = idx000 + 1;
+    const int idx010 = idx000 + tab.stride1;
+    const int idx011 = idx010 + 1;
+    const int idx100 = idx000 + tab.stride0;
+    const int idx101 = idx100 + 1;
+    const int idx110 = idx100 + tab.stride1;
+    const int idx111 = idx110 + 1;
+
+    const double w000 = a0*a1*a2;
+    const double w001 = a0*a1*b2;
+    const double w010 = a0*b1*a2;
+    const double w011 = a0*b1*b2;
+    const double w100 = b0*a1*a2;
+    const double w101 = b0*a1*b2;
+    const double w110 = b0*b1*a2;
+    const double w111 = b0*b1*b2;
+
+    const size_t o000 = (size_t)idx000 * (size_t)R;
+    const size_t o001 = (size_t)idx001 * (size_t)R;
+    const size_t o010 = (size_t)idx010 * (size_t)R;
+    const size_t o011 = (size_t)idx011 * (size_t)R;
+    const size_t o100 = (size_t)idx100 * (size_t)R;
+    const size_t o101 = (size_t)idx101 * (size_t)R;
+    const size_t o110 = (size_t)idx110 * (size_t)R;
+    const size_t o111 = (size_t)idx111 * (size_t)R;
+
+    const float *V  = tab.val.data();
+    const float *D0 = tab.d0.data();
+    const float *D1 = tab.d1.data();
+    const float *D2 = tab.d2.data();
+
+    for (int p=0; p<R; p++)
+    {
+        val[p] =
+            w000*(double)V[o000+p] + w001*(double)V[o001+p] +
+            w010*(double)V[o010+p] + w011*(double)V[o011+p] +
+            w100*(double)V[o100+p] + w101*(double)V[o101+p] +
+            w110*(double)V[o110+p] + w111*(double)V[o111+p];
+
+        d0[p] =
+            w000*(double)D0[o000+p] + w001*(double)D0[o001+p] +
+            w010*(double)D0[o010+p] + w011*(double)D0[o011+p] +
+            w100*(double)D0[o100+p] + w101*(double)D0[o101+p] +
+            w110*(double)D0[o110+p] + w111*(double)D0[o111+p];
+
+        d1[p] =
+            w000*(double)D1[o000+p] + w001*(double)D1[o001+p] +
+            w010*(double)D1[o010+p] + w011*(double)D1[o011+p] +
+            w100*(double)D1[o100+p] + w101*(double)D1[o101+p] +
+            w110*(double)D1[o110+p] + w111*(double)D1[o111+p];
+
+        d2[p] =
+            w000*(double)D2[o000+p] + w001*(double)D2[o001+p] +
+            w010*(double)D2[o010+p] + w011*(double)D2[o011+p] +
+            w100*(double)D2[o100+p] + w101*(double)D2[o101+p] +
+            w110*(double)D2[o110+p] + w111*(double)D2[o111+p];
+    }
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::compute_4B_svd4x2_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    vector<double> dummy_force_scalar(6);
+    compute_4B_svd4x2_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::compute_4B_svd4x2_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp,
+    vector<double> & force_scalar_in
+)
+{
+    const int npairs = 6;
+
+    int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
+            + typ_idxs[1]*natmtyps*natmtyps
+            + typ_idxs[2]*natmtyps
+            + typ_idxs[3];
+
+    int quadidx = atom_int_quad_map[idx];
+    if (quadidx < 0)
+        return;
+
+    if ((int)tab_4b_svd4x2_rank.size() <= quadidx ||
+        tab_4b_svd4x2_rank[quadidx] <= 0)
+    {
+        compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
+        return;
+    }
+
+    vector<int> &mapped_pair_idx = pair_int_quad_map[idx];
+
+    for (int p=0; p<npairs; p++)
+    {
+        if (dx[p] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[p]])
+            return;
+    }
+
+    int param_to_runtime[6];
+
+    for (int r=0; r<6; r++)
+        param_to_runtime[mapped_pair_idx[r]] = r;
+
+    int canon_to_runtime[6];
+
+    for (int c=0; c<6; c++)
+    {
+        int pslot;
+
+        if ((int)tab_4b_svd4x2_canon_to_param[quadidx].size() == 6)
+            pslot = tab_4b_svd4x2_canon_to_param[quadidx][c];
+        else
+            pslot = c;
+
+        canon_to_runtime[c] = param_to_runtime[pslot];
+    }
+
+    double rleft[4];
+    double rright[2];
+
+    rleft[0] = dx[canon_to_runtime[0]];
+    rleft[1] = dx[canon_to_runtime[1]];
+    rleft[2] = dx[canon_to_runtime[2]];
+    rleft[3] = dx[canon_to_runtime[3]];
+
+    rright[0] = dx[canon_to_runtime[4]];
+    rright[1] = dx[canon_to_runtime[5]];
+
+    const SVD4x2SideTable &left_tab  = tab_4b_svd4x2_left[quadidx];
+    const SVD4x2SideTable &right_tab = tab_4b_svd4x2_right[quadidx];
+
+    int R = tab_4b_svd4x2_rank[quadidx];
+
+    tmp.resize_svd4_rank(R);
+
+    double *L  = tmp.svd4_L.data();
+    double *L0 = tmp.svd4_L0.data();
+    double *L1 = tmp.svd4_L1.data();
+    double *L2 = tmp.svd4_L2.data();
+    double *L3 = tmp.svd4_L3.data();
+
+    double *RR = tmp.svd4_R.data();
+    double *R0 = tmp.svd4_R0.data();
+    double *R1 = tmp.svd4_R1.data();
+
+    double *left_blocks[5] = {L, L0, L1, L2, L3};
+    double *right_blocks[3] = {RR, R0, R1};
+
+    interpolateSVD4x2SideLinear(left_tab, rleft, left_blocks);
+    interpolateSVD4x2SideLinear(right_tab, rright, right_blocks);
+
+    double e4 = 0.0;
+
+    double dL0 = 0.0;
+    double dL1 = 0.0;
+    double dL2 = 0.0;
+    double dL3 = 0.0;
+
+    double dR0 = 0.0;
+    double dR1 = 0.0;
+
+    for (int p=0; p<R; p++)
+    {
+        const double lp = L[p];
+        const double rp = RR[p];
+
+        e4  += lp * rp;
+
+        dL0 += L0[p] * rp;
+        dL1 += L1[p] * rp;
+        dL2 += L2[p] * rp;
+        dL3 += L3[p] * rp;
+
+        dR0 += lp * R0[p];
+        dR1 += lp * R1[p];
+    }
+
+    energy += e4;
+
+    double dE_pair[6] = {0.0,0.0,0.0,0.0,0.0,0.0};
+
+    dE_pair[canon_to_runtime[0]] = dL0;
+    dE_pair[canon_to_runtime[1]] = dL1;
+    dE_pair[canon_to_runtime[2]] = dL2;
+    dE_pair[canon_to_runtime[3]] = dL3;
+    dE_pair[canon_to_runtime[4]] = dR0;
+    dE_pair[canon_to_runtime[5]] = dR1;
+
+    double force_scalar[6];
+
+    for (int p=0; p<6; p++)
+        force_scalar[p] = dE_pair[p] / dx[p];
+
+#ifdef USE_DISTANCE_TENSOR
+    double dr2[CHDIM*CHDIM*npairs*npairs];
+    init_distance_tensor(dr2, dr, npairs);
+#endif
+
+    // ij
+    force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[0] * dr[0*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[0] * dr[0*CHDIM+2];
+    force[1*CHDIM+0] -= force_scalar[0] * dr[0*CHDIM+0];
+    force[1*CHDIM+1] -= force_scalar[0] * dr[0*CHDIM+1];
+    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];
+
+    // ik
+    force[0*CHDIM+0] += force_scalar[1] * dr[1*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[1] * dr[1*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[1] * dr[1*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[1] * dr[1*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[1] * dr[1*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];
+
+    // il
+    force[0*CHDIM+0] += force_scalar[2] * dr[2*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[2] * dr[2*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[2] * dr[2*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[2] * dr[2*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[2] * dr[2*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];
+
+    // jk
+    force[1*CHDIM+0] += force_scalar[3] * dr[3*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[3] * dr[3*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[3] * dr[3*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[3] * dr[3*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[3] * dr[3*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[3] * dr[3*CHDIM+2];
+
+    // jl
+    force[1*CHDIM+0] += force_scalar[4] * dr[4*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[4] * dr[4*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[4] * dr[4*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[4] * dr[4*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[4] * dr[4*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[4] * dr[4*CHDIM+2];
+
+    // kl
+    force[2*CHDIM+0] += force_scalar[5] * dr[5*CHDIM+0];
+    force[2*CHDIM+1] += force_scalar[5] * dr[5*CHDIM+1];
+    force[2*CHDIM+2] += force_scalar[5] * dr[5*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[5] * dr[5*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[5] * dr[5*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[5] * dr[5*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr2_4B(dr2,p,0,p,0);
+        stress[1] -= force_scalar[p] * dr2_4B(dr2,p,0,p,1);
+        stress[2] -= force_scalar[p] * dr2_4B(dr2,p,0,p,2);
+        stress[3] -= force_scalar[p] * dr2_4B(dr2,p,1,p,1);
+        stress[4] -= force_scalar[p] * dr2_4B(dr2,p,1,p,2);
+        stress[5] -= force_scalar[p] * dr2_4B(dr2,p,2,p,2);
+    }
+#else
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+0];
+        stress[1] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+1];
+        stress[2] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+2];
+        stress[3] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+1];
+        stress[4] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+2];
+        stress[5] -= force_scalar[p] * dr[p*CHDIM+2] * dr[p*CHDIM+2];
+    }
+#endif
+
+    for (int p=0; p<6; p++)
+        force_scalar_in[p] = force_scalar[p];
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::compute_4B_svd3x3_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    vector<double> dummy_force_scalar(6);
+    compute_4B_svd3x3_tab(
+        dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
+    );
 }
 #endif
 
@@ -1540,7 +2407,87 @@ void chimesFF::read_parameters(string paramfile)
             continue;
         }
     #endif
-        
+        #ifdef TABULATION
+        if(line.find("4B SVD3X3 TABLES:") != string::npos)
+        {
+            split_line(line, tmp_str_items);
+
+            int ntab = stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab
+                     << " SVD 3|3 4B tables" << endl;
+
+            tabulate_4B_svd3x3 = true;
+
+            for (int t=0; t<ntab; t++)
+            {
+                line = get_next_line(param_file);
+                split_line(line, tmp_str_items);
+
+                if (tmp_str_items.size() != 4)
+                {
+                    cout << "ERROR: Expected SVD3X3 table line format:" << endl;
+                    cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+
+                int quadidx = stoi(tmp_str_items[0]);
+
+                string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
+                string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
+                string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
+
+                read_4B_svd3x3_meta(metafile, quadidx);
+                read_4B_svd3x3_tab(leftfile,  quadidx, true);
+                read_4B_svd3x3_tab(rightfile, quadidx, false);
+            }
+
+            continue;
+        }
+#endif
+#ifdef TABULATION
+        if(line.find("4B SVD4X2 TABLES:") != string::npos)
+        {
+            split_line(line, tmp_str_items);
+
+            int ntab = stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab
+                     << " SVD 4|2 4B tables" << endl;
+
+            tabulate_4B_svd4x2 = true;
+
+            for (int t=0; t<ntab; t++)
+            {
+                line = get_next_line(param_file);
+                split_line(line, tmp_str_items);
+
+                if (tmp_str_items.size() != 4)
+                {
+                    cout << "ERROR: Expected SVD4X2 table line format:" << endl;
+                    cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+
+                int quadidx = stoi(tmp_str_items[0]);
+
+                string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
+                string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
+                string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
+
+                read_4B_svd4x2_meta(metafile, quadidx);
+                read_4B_svd4x2_tab(leftfile,  quadidx, true);
+                read_4B_svd4x2_tab(rightfile, quadidx, false);
+            }
+
+            continue;
+        }
+#endif
+
 			if(line.find("ENDFILE") != string::npos)
                 break;    
             
@@ -2772,6 +3719,242 @@ bool custom_comparator(const pair<string, double>& a, const pair<string, double>
 
     return a.first < b.first; // Otherwise, sort by pair_type in ascending order
 }   
+#ifdef TABULATION
+void chimesFF::compute_4B_svd3x3_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp,
+    vector<double> & force_scalar_in
+)
+{
+    const int npairs = 6;
+
+    const int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
+                  + typ_idxs[1]*natmtyps*natmtyps
+                  + typ_idxs[2]*natmtyps
+                  + typ_idxs[3];
+
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return;
+
+    if ((int)tab_4b_svd3x3_rank.size() <= quadidx ||
+        tab_4b_svd3x3_rank[quadidx] <= 0)
+    {
+        compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
+        return;
+    }
+
+    vector<int> &mapped_pair_idx = pair_int_quad_map[idx];
+
+    // Cutoff check.
+    for (int p=0; p<npairs; p++)
+    {
+        if (dx[p] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[p]])
+            return;
+    }
+
+    // Build canonical-to-runtime map.
+    int param_to_runtime[6];
+
+    for (int r=0; r<6; r++)
+        param_to_runtime[mapped_pair_idx[r]] = r;
+
+    int canon_to_runtime[6];
+
+    for (int c=0; c<6; c++)
+    {
+        int pslot;
+
+        if ((int)tab_4b_svd3x3_canon_to_param[quadidx].size() == 6)
+            pslot = tab_4b_svd3x3_canon_to_param[quadidx][c];
+        else
+            pslot = c;
+
+        canon_to_runtime[c] = param_to_runtime[pslot];
+    }
+
+    double rleft[3];
+    double rright[3];
+
+    rleft[0] = dx[canon_to_runtime[0]];
+    rleft[1] = dx[canon_to_runtime[1]];
+    rleft[2] = dx[canon_to_runtime[2]];
+
+    rright[0] = dx[canon_to_runtime[3]];
+    rright[1] = dx[canon_to_runtime[4]];
+    rright[2] = dx[canon_to_runtime[5]];
+
+    const SVD3x3SideTable &left_tab  = tab_4b_svd3x3_left[quadidx];
+    const SVD3x3SideTable &right_tab = tab_4b_svd3x3_right[quadidx];
+
+    const int R = tab_4b_svd3x3_rank[quadidx];
+
+    if (left_tab.rank != R || right_tab.rank != R)
+    {
+        cout << "ERROR: SVD3X3 rank mismatch for quad type "
+             << quadidx << endl;
+        exit(0);
+    }
+
+    // Reuse scratch memory instead of allocating vectors every call.
+    tmp.resize_svd_rank(R);
+
+    double *X  = tmp.svd_X.data();
+    double *X0 = tmp.svd_X0.data();
+    double *X1 = tmp.svd_X1.data();
+    double *X2 = tmp.svd_X2.data();
+
+    double *Y  = tmp.svd_Y.data();
+    double *Y0 = tmp.svd_Y0.data();
+    double *Y1 = tmp.svd_Y1.data();
+    double *Y2 = tmp.svd_Y2.data();
+
+    interpolateSVD3x3SideLinear(
+        left_tab,
+        rleft,
+        X,
+        X0,
+        X1,
+        X2
+    );
+
+    interpolateSVD3x3SideLinear(
+        right_tab,
+        rright,
+        Y,
+        Y0,
+        Y1,
+        Y2
+    );
+
+    double e4  = 0.0;
+
+    double dL0 = 0.0;
+    double dL1 = 0.0;
+    double dL2 = 0.0;
+
+    double dR0 = 0.0;
+    double dR1 = 0.0;
+    double dR2 = 0.0;
+
+    for (int p=0; p<R; p++)
+    {
+        const double xp  = X[p];
+        const double yp  = Y[p];
+
+        e4  += xp    * yp;
+
+        dL0 += X0[p] * yp;
+        dL1 += X1[p] * yp;
+        dL2 += X2[p] * yp;
+
+        dR0 += xp    * Y0[p];
+        dR1 += xp    * Y1[p];
+        dR2 += xp    * Y2[p];
+    }
+
+    energy += e4;
+
+    double dE_pair[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+    dE_pair[canon_to_runtime[0]] = dL0;
+    dE_pair[canon_to_runtime[1]] = dL1;
+    dE_pair[canon_to_runtime[2]] = dL2;
+
+    dE_pair[canon_to_runtime[3]] = dR0;
+    dE_pair[canon_to_runtime[4]] = dR1;
+    dE_pair[canon_to_runtime[5]] = dR2;
+
+    double force_scalar[6];
+
+    for (int p=0; p<6; p++)
+        force_scalar[p] = dE_pair[p] / dx[p];
+
+#ifdef USE_DISTANCE_TENSOR
+    double dr2[CHDIM*CHDIM*npairs*npairs];
+    init_distance_tensor(dr2, dr, npairs);
+#endif
+
+    // ij
+    force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[0] * dr[0*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[0] * dr[0*CHDIM+2];
+    force[1*CHDIM+0] -= force_scalar[0] * dr[0*CHDIM+0];
+    force[1*CHDIM+1] -= force_scalar[0] * dr[0*CHDIM+1];
+    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];
+
+    // ik
+    force[0*CHDIM+0] += force_scalar[1] * dr[1*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[1] * dr[1*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[1] * dr[1*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[1] * dr[1*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[1] * dr[1*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];
+
+    // il
+    force[0*CHDIM+0] += force_scalar[2] * dr[2*CHDIM+0];
+    force[0*CHDIM+1] += force_scalar[2] * dr[2*CHDIM+1];
+    force[0*CHDIM+2] += force_scalar[2] * dr[2*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[2] * dr[2*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[2] * dr[2*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];
+
+    // jk
+    force[1*CHDIM+0] += force_scalar[3] * dr[3*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[3] * dr[3*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[3] * dr[3*CHDIM+2];
+    force[2*CHDIM+0] -= force_scalar[3] * dr[3*CHDIM+0];
+    force[2*CHDIM+1] -= force_scalar[3] * dr[3*CHDIM+1];
+    force[2*CHDIM+2] -= force_scalar[3] * dr[3*CHDIM+2];
+
+    // jl
+    force[1*CHDIM+0] += force_scalar[4] * dr[4*CHDIM+0];
+    force[1*CHDIM+1] += force_scalar[4] * dr[4*CHDIM+1];
+    force[1*CHDIM+2] += force_scalar[4] * dr[4*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[4] * dr[4*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[4] * dr[4*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[4] * dr[4*CHDIM+2];
+
+    // kl
+    force[2*CHDIM+0] += force_scalar[5] * dr[5*CHDIM+0];
+    force[2*CHDIM+1] += force_scalar[5] * dr[5*CHDIM+1];
+    force[2*CHDIM+2] += force_scalar[5] * dr[5*CHDIM+2];
+    force[3*CHDIM+0] -= force_scalar[5] * dr[5*CHDIM+0];
+    force[3*CHDIM+1] -= force_scalar[5] * dr[5*CHDIM+1];
+    force[3*CHDIM+2] -= force_scalar[5] * dr[5*CHDIM+2];
+
+#ifdef USE_DISTANCE_TENSOR
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr2_4B(dr2,p,0,p,0);
+        stress[1] -= force_scalar[p] * dr2_4B(dr2,p,0,p,1);
+        stress[2] -= force_scalar[p] * dr2_4B(dr2,p,0,p,2);
+        stress[3] -= force_scalar[p] * dr2_4B(dr2,p,1,p,1);
+        stress[4] -= force_scalar[p] * dr2_4B(dr2,p,1,p,2);
+        stress[5] -= force_scalar[p] * dr2_4B(dr2,p,2,p,2);
+    }
+#else
+    for (int p=0; p<6; p++)
+    {
+        stress[0] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+0];
+        stress[1] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+1];
+        stress[2] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+2];
+        stress[3] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+1];
+        stress[4] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+2];
+        stress[5] -= force_scalar[p] * dr[p*CHDIM+2] * dr[p*CHDIM+2];
+    }
+#endif
+
+    for (int p=0; p<6; p++)
+        force_scalar_in[p] = force_scalar[p];
+}
+#endif
 
 #ifdef TABULATION
 void chimesFF::compute_4B_tab_coeff(
