@@ -340,7 +340,6 @@ void PairCHIMES::build_mb_neighlists()
 	// List gets built based on atoms owned by calling proc. 
 	
 	neighborlist_3mers.clear();
-	neighborlist_4mers.clear();
 	
 	int i,j,k,l,inum,jnum,knum,lnum, ii, jj, kk, ll;		 // Local iterator vars
 	int *ilist,*jlist,*klist,*llist, *numneigh,**firstneigh; // Local neighborlist vars
@@ -350,7 +349,6 @@ void PairCHIMES::build_mb_neighlists()
 	double 	**x    = atom -> x;					             // Access to system coordinates
 	
 	double maxcut_3b_padded = maxcut_3b + neighbor-> skin;
-	double maxcut_4b_padded = maxcut_4b + neighbor-> skin;
 	
 	double dist_ij, dist_ik, dist_il, dist_jk, dist_jl, dist_kl;
 	
@@ -391,7 +389,7 @@ void PairCHIMES::build_mb_neighlists()
 
 			dist_ij = get_dist(i,j);
 			
-			if ( (dist_ij >= maxcut_3b_padded) && (dist_ij >= maxcut_4b_padded) )
+			if ( (dist_ij >= maxcut_3b_padded))
 				continue;
 
 			klist = firstneigh[i];	// ChIMES assumes all atoms must be within cutoff of eachother for a valid interaction	
@@ -415,7 +413,7 @@ void PairCHIMES::build_mb_neighlists()
 
 				dist_ik = get_dist(i,k);
 
-				if ( (dist_ik >= maxcut_3b_padded) && (dist_ik >= maxcut_4b_padded) )
+				if ( (dist_ik >= maxcut_3b_padded))
 					continue;
 					
 				// Check jk distance			
@@ -432,67 +430,6 @@ void PairCHIMES::build_mb_neighlists()
 				
 					neighborlist_3mers.push_back(tmp_3mer);
 				}
-									
-				if ((dist_ij >= maxcut_4b_padded) || (dist_ik >= maxcut_4b_padded) || (dist_jk >= maxcut_4b_padded) )	
-					continue;					
-				
-				// Now decide if we should continue on to 4-body neighbor list construction
-
-				if (chimes_calculator.poly_orders[2] == 0 
-					#ifdef FINGERPRINT
-						&& !fingerprint
-					#endif
-					)
-					continue;
-
-				llist = firstneigh[i];	
-				lnum  = numneigh[i];	
-					
-				for (ll = 0; ll < lnum; ll++)	
-				{
-					l     = llist[ll];	
-					ltag  = tag[l];		
-					l    &= NEIGHMASK;
-
-					if (chimes_type[type[l]-1] < 0)
-						continue;
-					
-					if ( (l==i) || (l==j) || (l==k))
-						continue;
-					if ((ltag < itag) ||(ltag < jtag)||(ltag < ktag)) 
-						continue;
-											
-					// Check il distance			
-
-					dist_il = get_dist(i,l); 
-
-					if (dist_il >= maxcut_4b_padded)
-						continue;	
-
-					// Check jl distance			
-	
-					dist_jl = get_dist(j,l);
-	
-					if (dist_jl >= maxcut_4b_padded)
-						continue;
-								
-					// Check kl distance			
-
-					dist_kl = get_dist(k,l);
-	
-					if (dist_kl >= maxcut_4b_padded)
-						continue;
-		
-					// If we're here and valid_4mer == true, then add the quadruplet to the chimes neigh list
-					
-					tmp_4mer[0] = i;
-					tmp_4mer[1] = j;
-					tmp_4mer[2] = k;
-					tmp_4mer[3] = l;
-					
-					neighborlist_4mers.push_back(tmp_4mer);
-					
-				}				
 			}
 		}
 	}
@@ -500,32 +437,7 @@ void PairCHIMES::build_mb_neighlists()
 // Add this at the end of build_mb_neighlists()
 // Include <algorithm> at the top of your file if not already present
 
-std::sort(neighborlist_4mers.begin(), neighborlist_4mers.end(), 
-    [&](const std::vector<int>& a, const std::vector<int>& b) {
-        
-        // 1. Get the elemental types for quadruplet A
-        int types_A[4] = { chimes_type[atom->type[a[0]]-1], 
-                           chimes_type[atom->type[a[1]]-1], 
-                           chimes_type[atom->type[a[2]]-1], 
-                           chimes_type[atom->type[a[3]]-1] };
-        std::sort(types_A, types_A + 4); // Standardize order (e.g., C-H-O-N -> C-H-N-O)
-
-        // 2. Get the elemental types for quadruplet B
-        int types_B[4] = { chimes_type[atom->type[b[0]]-1], 
-                           chimes_type[atom->type[b[1]]-1], 
-                           chimes_type[atom->type[b[2]]-1], 
-                           chimes_type[atom->type[b[3]]-1] };
-        std::sort(types_B, types_B + 4);
-
-        // 3. Compare the signatures to group identical quadruplet types together
-        for (int i = 0; i < 4; i++) {
-            if (types_A[i] != types_B[i]) {
-                return types_A[i] < types_B[i];
-            }
-        }
-        return false;
-    }
-);
+	return;
 
 }
 
@@ -544,8 +456,8 @@ void PairCHIMES::compute(int eflag, int vflag)
 	
 	// General LAMMPS compute vars
 	
-	int 	i,j,k,l,inum,jnum, ii, jj;	// Local iterator vars
-	int 	*ilist,*jlist, *numneigh,**firstneigh;	// Local neighborlist vars
+	int 	i,j,k,l,inum,jnum,lnum, ii, jj;	// Local iterator vars
+	int 	*ilist,*jlist,*llist, *numneigh,**firstneigh;	// Local neighborlist vars
 	int     idx;
 
 	double 	**x    = atom -> x;		    // Access to system coordinates
@@ -726,203 +638,330 @@ void PairCHIMES::compute(int eflag, int vflag)
             badness_stream << update->ntimestep << " " <<  chimes_calculator.get_badness() << endl;
 
 	// if (chimes_calculator.poly_orders[1] > 0 || tmp_FP)
-	if (chimes_calculator.poly_orders[1] > 0)
-	{
-		////////////////////////////////////////
-		// Compute 3-body interactions
-		////////////////////////////////////////
-
-		for (ii = 0; ii < neighborlist_3mers.size(); ii++)		
+	if (chimes_calculator.poly_orders[1] > 0 ||
+			chimes_calculator.poly_orders[2] > 0)
 		{
-			i     = neighborlist_3mers[ii][0];
-			j     = neighborlist_3mers[ii][1];
-			k     = neighborlist_3mers[ii][2];
+			std::vector<chimesFF::chimes4BTripletReuseTmp> reuse_cache;
+			reuse_cache.reserve(8);
 
-			dist_3b[0] = get_dist(i,j,&dr_3b[0*CHDIM]);
-			dist_3b[1] = get_dist(i,k,&dr_3b[1*CHDIM]);
-			dist_3b[2] = get_dist(j,k,&dr_3b[2*CHDIM]);
-
-			typ_idxs_3b[0] = chimes_type[type[i]-1];
-			typ_idxs_3b[1] = chimes_type[type[j]-1];
-			typ_idxs_3b[2] = chimes_type[type[k]-1];
-
-			std::fill(force_3b.begin(), force_3b.end(), 0.0) ;
-			std::fill(stensor.begin(), stensor.end(), 0.0) ;
-				
-			energy = 0.0 ;
-      
-#ifdef TABULATION
-			if (chimes_calculator.tabulate_3B){
-                chimes_calculator.compute_3B_tab( dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp);}
-            else
-#endif
-
-			#ifdef FINGERPRINT
-			valid_order = (tag[i] < tag[j] && tag[i] < tag[k] && tag[j] < tag[k]);
-			if (tmp_FP && valid_order){
-				vector<double> tmp_force_scalar_3b(3);
-				chimes_calculator.compute_3B( dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp, tmp_force_scalar_3b, tmp_dist_3b, tmp_FP && valid_order);
-			} else {
-			#endif
-				chimes_calculator.compute_3B( dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp);
-			#ifdef FINGERPRINT
-			}
-			#endif
-
-			for (idx=0; idx<3; idx++)
+			for (ii = 0; ii < neighborlist_3mers.size(); ii++)
 			{
-				f[i][idx] += force_3b[0*CHDIM+idx] ;
-				f[j][idx] += force_3b[1*CHDIM+idx] ;
-				f[k][idx] += force_3b[2*CHDIM+idx] ;
+				i = neighborlist_3mers[ii][0];
+				j = neighborlist_3mers[ii][1];
+				k = neighborlist_3mers[ii][2];
+
+				itag = tag[i];
+				jtag = tag[j];
+				ktag = tag[k];
+
+				if (chimes_type[type[i]-1] < 0) continue;
+				if (chimes_type[type[j]-1] < 0) continue;
+				if (chimes_type[type[k]-1] < 0) continue;
+
+				// Shared triplet distances.
+				dist_3b[0] = get_dist(i, j, &dr_3b[0*CHDIM]);
+				dist_3b[1] = get_dist(i, k, &dr_3b[1*CHDIM]);
+				dist_3b[2] = get_dist(j, k, &dr_3b[2*CHDIM]);
+
+				const double dist_ij = dist_3b[0];
+				const double dist_ik = dist_3b[1];
+				const double dist_jk = dist_3b[2];
+
+				const int type_i = chimes_type[type[i]-1];
+				const int type_j = chimes_type[type[j]-1];
+				const int type_k = chimes_type[type[k]-1];
+
+				/*
+				* 3B calculation.
+				*
+				* Existing neighborlist_3mers should already satisfy maxcut_3b-padded
+				* construction, but keep the explicit maxcut check here.
+				*/
+				if (chimes_calculator.poly_orders[1] > 0)
+				{
+					if (dist_ij < maxcut_3b &&
+						dist_ik < maxcut_3b &&
+						dist_jk < maxcut_3b)
+					{
+						typ_idxs_3b[0] = type_i;
+						typ_idxs_3b[1] = type_j;
+						typ_idxs_3b[2] = type_k;
+
+						std::fill(force_3b.begin(), force_3b.end(), 0.0);
+						std::fill(stensor.begin(), stensor.end(), 0.0);
+
+						energy = 0.0;
+
+		#ifdef TABULATION
+						if (chimes_calculator.tabulate_3B)
+						{
+							chimes_calculator.compute_3B_tab(
+								dist_3b,
+								dr_3b,
+								typ_idxs_3b,
+								force_3b,
+								stensor,
+								energy,
+								chimes_3btmp
+							);
+						}
+						else
+		#endif
+						{
+							chimes_calculator.compute_3B(
+								dist_3b,
+								dr_3b,
+								typ_idxs_3b,
+								force_3b,
+								stensor,
+								energy,
+								chimes_3btmp
+							);
+						}
+
+						for (idx = 0; idx < CHDIM; idx++)
+						{
+							f[i][idx] += force_3b[0*CHDIM + idx];
+							f[j][idx] += force_3b[1*CHDIM + idx];
+							f[k][idx] += force_3b[2*CHDIM + idx];
+						}
+
+						if (vflag_atom)
+						{
+							atmidxlst[0][0] = i; atmidxlst[0][1] = j;
+							atmidxlst[1][0] = i; atmidxlst[1][1] = k;
+							atmidxlst[2][0] = j; atmidxlst[2][1] = k;
+						}
+
+						if (evflag)
+							ev_tally_mb(3, 3, atmidxlst, energy, stensor);
+					}
+				}
+
+				/*
+				* 4B seed check.
+				*
+				* Assumption:
+				*   maxcut_3b >= maxcut_4b
+				*
+				* Therefore neighborlist_3mers includes every possible 4B seed triplet.
+				*/
+				if (chimes_calculator.poly_orders[2] == 0)
+					continue;
+
+				if (dist_ij >= maxcut_4b ||
+					dist_ik >= maxcut_4b ||
+					dist_jk >= maxcut_4b)
+					continue;
+
+				reuse_cache.clear();
+
+				// Copy triplet side into 4B runtime pair slots:
+				//
+				//   0 = ij
+				//   1 = ik
+				//   3 = jk
+				dist_4b[0] = dist_ij;
+				dist_4b[1] = dist_ik;
+				dist_4b[3] = dist_jk;
+
+				for (idx = 0; idx < CHDIM; idx++)
+				{
+					dr_4b[0*CHDIM + idx] = dr_3b[0*CHDIM + idx];
+					dr_4b[1*CHDIM + idx] = dr_3b[1*CHDIM + idx];
+					dr_4b[3*CHDIM + idx] = dr_3b[2*CHDIM + idx];
+				}
+
+				typ_idxs_4b[0] = type_i;
+				typ_idxs_4b[1] = type_j;
+				typ_idxs_4b[2] = type_k;
+
+				/*
+				* Candidate fourth atoms.
+				*
+				* We scan i's full neighbor list and enforce the old uniqueness rule:
+				*
+				*   ltag > itag, jtag, ktag
+				*
+				* This preserves one evaluation per 4B cluster.
+				*/
+				llist = firstneigh[i];
+				lnum  = numneigh[i];
+
+				for (int ll = 0; ll < lnum; ll++)
+				{
+					l = llist[ll];
+					l &= NEIGHMASK;
+
+					if ((l == i) || (l == j) || (l == k))
+						continue;
+
+					ltag = tag[l];
+
+					if ((ltag < itag) || (ltag < jtag) || (ltag < ktag))
+						continue;
+
+					if (chimes_type[type[l]-1] < 0)
+						continue;
+
+					dist_4b[2] = get_dist(i, l, &dr_4b[2*CHDIM]);
+					if (dist_4b[2] >= maxcut_4b)
+						continue;
+
+					dist_4b[4] = get_dist(j, l, &dr_4b[4*CHDIM]);
+					if (dist_4b[4] >= maxcut_4b)
+						continue;
+
+					dist_4b[5] = get_dist(k, l, &dr_4b[5*CHDIM]);
+					if (dist_4b[5] >= maxcut_4b)
+						continue;
+
+					const int type_l = chimes_type[type[l]-1];
+
+					typ_idxs_4b[3] = type_l;
+
+					/*
+					* Reuse cache is keyed by type_l_context.
+					*
+					* For single-species systems this computes one left object per triplet.
+					* For multi-species systems this computes one left object per distinct
+					* fourth-atom type encountered for this triplet.
+					*/
+					chimesFF::chimes4BTripletReuseTmp *reuse_ptr = nullptr;
+
+					for (int c = 0; c < (int)reuse_cache.size(); c++)
+					{
+						if (reuse_cache[c].type_l_context == type_l)
+						{
+							reuse_ptr = &reuse_cache[c];
+							break;
+						}
+					}
+
+					if (reuse_ptr == nullptr)
+					{
+						chimesFF::chimes4BTripletReuseTmp reuse_new;
+
+						std::vector<double> dx_trip_013(3);
+						dx_trip_013[0] = dist_ij;
+						dx_trip_013[1] = dist_ik;
+						dx_trip_013[2] = dist_jk;
+
+						bool ok = chimes_calculator.prepare_4B_triplet_reuse(
+							dx_trip_013,
+							typ_idxs_4b,
+							chimes_4btmp,
+							reuse_new
+						);
+
+						if (ok)
+						{
+							reuse_cache.push_back(reuse_new);
+							reuse_ptr = &reuse_cache.back();
+						}
+					}
+
+					std::fill(force_4b.begin(), force_4b.end(), 0.0);
+					std::fill(stensor.begin(), stensor.end(), 0.0);
+
+					energy = 0.0;
+
+					if (reuse_ptr != nullptr && reuse_ptr->valid)
+					{
+						chimes_calculator.compute_4B_from_triplet_reuse(
+							dist_4b,
+							dr_4b,
+							typ_idxs_4b,
+							*reuse_ptr,
+							force_4b,
+							stensor,
+							energy,
+							chimes_4btmp
+						);
+					}
+					else
+					{
+						/*
+						* Fallback for unsupported tabulation modes, excluded mappings,
+						* or non-triplet-star tables.
+						*/
+		#ifdef TABULATION
+						if (chimes_calculator.tabulate_4B_svd4x2)
+						{
+							chimes_calculator.compute_4B_svd4x2_tab(
+								dist_4b,
+								dr_4b,
+								typ_idxs_4b,
+								force_4b,
+								stensor,
+								energy,
+								chimes_4btmp
+							);
+						}
+						else if (chimes_calculator.tabulate_4B_svd3x3)
+						{
+							chimes_calculator.compute_4B_svd3x3_tab(
+								dist_4b,
+								dr_4b,
+								typ_idxs_4b,
+								force_4b,
+								stensor,
+								energy,
+								chimes_4btmp
+							);
+						}
+						else if (chimes_calculator.tabulate_4B_coeff)
+						{
+							chimes_calculator.compute_4B_tab_coeff(
+								dist_4b,
+								dr_4b,
+								typ_idxs_4b,
+								force_4b,
+								stensor,
+								energy,
+								chimes_4btmp
+							);
+						}
+						else
+		#endif
+						{
+							chimes_calculator.compute_4B(
+								dist_4b,
+								dr_4b,
+								typ_idxs_4b,
+								force_4b,
+								stensor,
+								energy,
+								chimes_4btmp
+							);
+						}
+					}
+
+					for (idx = 0; idx < CHDIM; idx++)
+					{
+						f[i][idx] += force_4b[0*CHDIM + idx];
+						f[j][idx] += force_4b[1*CHDIM + idx];
+						f[k][idx] += force_4b[2*CHDIM + idx];
+						f[l][idx] += force_4b[3*CHDIM + idx];
+					}
+
+					if (vflag_atom)
+					{
+						atmidxlst[0][0] = i; atmidxlst[0][1] = j;
+						atmidxlst[1][0] = i; atmidxlst[1][1] = k;
+						atmidxlst[2][0] = i; atmidxlst[2][1] = l;
+						atmidxlst[3][0] = j; atmidxlst[3][1] = k;
+						atmidxlst[4][0] = j; atmidxlst[4][1] = l;
+						atmidxlst[5][0] = k; atmidxlst[5][1] = l;
+					}
+
+					if (evflag)
+						ev_tally_mb(4, 6, atmidxlst, energy, stensor);
+				}
 			}
-
-            if (vflag_atom)
-            {
-			    atmidxlst[0][0] = i;
-			    atmidxlst[0][1] = j;
-			    atmidxlst[1][0] = i;
-			    atmidxlst[1][1] = k;
-			    atmidxlst[2][0] = j;
-			    atmidxlst[2][1] = k;
-            }
-			
-			if (evflag)
-				ev_tally_mb(3, 3, atmidxlst, energy, stensor);		            
-		}		
-	}
-	#ifdef FINGERPRINT
-	if (tmp_FP)
-	{
-		std::stringstream filename_3b;
-		filename_3b << ts << "." << std::to_string(chimes_calculator.rank) <<".3b_clusters.txt";
-		writeClusterDataComp(filename_3b.str(), tmp_dist_3b);
-	}
-	#endif
-
-    // if (chimes_calculator.poly_orders[2] > 0 || tmp_FP)
-	if (chimes_calculator.poly_orders[2] > 0)
-
-	{
-		////////////////////////////////////////
-		// Compute 4-body interactions
-		////////////////////////////////////////
-
-		for (ii = 0; ii < neighborlist_4mers.size(); ii++)		
-		{
-			i     = neighborlist_4mers[ii][0];
-			j     = neighborlist_4mers[ii][1];
-			k     = neighborlist_4mers[ii][2];
-			l     = neighborlist_4mers[ii][3];			
-			
-			dist_4b[0] = get_dist(i,j,&dr_4b[0*CHDIM]);				      
-			dist_4b[1] = get_dist(i,k,&dr_4b[1*CHDIM]);
-			dist_4b[2] = get_dist(i,l,&dr_4b[2*CHDIM]);
-			dist_4b[3] = get_dist(j,k,&dr_4b[3*CHDIM]);
-			dist_4b[4] = get_dist(j,l,&dr_4b[4*CHDIM]);
-			dist_4b[5] = get_dist(k,l,&dr_4b[5*CHDIM]);
-
-			typ_idxs_4b[0] = chimes_type[type[i]-1];
-			typ_idxs_4b[1] = chimes_type[type[j]-1];
-			typ_idxs_4b[2] = chimes_type[type[k]-1];
-			typ_idxs_4b[3] = chimes_type[type[l]-1];
-
-			std::fill(force_4b.begin(), force_4b.end(), 0.0) ;
-			std::fill(stensor.begin(), stensor.end(), 0.0) ;
-
-			energy = 0.0 ;	
-			
-			#ifdef FINGERPRINT
-			valid_order = (tag[i] < tag[j] && tag[j] < tag[k] && tag[k] < tag[l]);
-			if (tmp_FP && valid_order){
-				vector<double> tmp_force_scalar_4b(6);
-				chimes_calculator.compute_4B( dist_4b, dr_4b, typ_idxs_4b, force_4b, stensor, energy, chimes_4btmp, tmp_force_scalar_4b, tmp_dist_4b, tmp_FP && valid_order);
-			} else {
-			#endif
-#ifdef TABULATION
-            if (chimes_calculator.tabulate_4B_svd4x2)
-                chimes_calculator.compute_4B_svd4x2_tab(
-                    dist_4b,
-                    dr_4b,
-                    typ_idxs_4b,
-                    force_4b,
-                    stensor,
-                    energy,
-                    chimes_4btmp
-                );
-            else if (chimes_calculator.tabulate_4B_svd3x3)
-                chimes_calculator.compute_4B_svd3x3_tab(
-                    dist_4b,
-                    dr_4b,
-                    typ_idxs_4b,
-                    force_4b,
-                    stensor,
-                    energy,
-                    chimes_4btmp
-                );
-            else if (chimes_calculator.tabulate_4B_coeff)
-                chimes_calculator.compute_4B_tab_coeff(
-                    dist_4b,
-                    dr_4b,
-                    typ_idxs_4b,
-                    force_4b,
-                    stensor,
-                    energy,
-                    chimes_4btmp
-                );
-            else
-#endif
-                chimes_calculator.compute_4B(
-                    dist_4b,
-                    dr_4b,
-                    typ_idxs_4b,
-                    force_4b,
-                    stensor,
-                    energy,
-                    chimes_4btmp
-                );
-			#ifdef FINGERPRINT
-			}
-			#endif
-
-			for (idx=0; idx<3; idx++)
-			{
-				f[i][idx] += force_4b[0*CHDIM+idx] ;
-				f[j][idx] += force_4b[1*CHDIM+idx] ;
-				f[k][idx] += force_4b[2*CHDIM+idx] ;
-				f[l][idx] += force_4b[3*CHDIM+idx] ;
-			}
-			
-            if (vflag_atom) 
-            {
-			    atmidxlst[0][0] = i;
-			    atmidxlst[0][1] = j;
-			    atmidxlst[1][0] = i;
-			    atmidxlst[1][1] = k;
-			    atmidxlst[2][0] = i;
-			    atmidxlst[2][1] = l;
-			    atmidxlst[3][0] = j;
-			    atmidxlst[3][1] = k;
-			    atmidxlst[4][0] = j;
-			    atmidxlst[4][1] = l;
-			    atmidxlst[5][0] = k;
-			    atmidxlst[5][1] = l;
-            }
-			
-			if (evflag)
-				ev_tally_mb(4, 6, atmidxlst, energy, stensor);	
-            
 		}
-	}
-	#ifdef FINGERPRINT
-	if (tmp_FP)
-	{
-		std::stringstream filename_4b;
-		filename_4b << ts << "." << std::to_string(chimes_calculator.rank) <<".4b_clusters.txt";
-		writeClusterDataComp(filename_4b.str(), tmp_dist_4b);
-	}
-	#endif
 
-if (vflag_fdotr) 
+		if (vflag_fdotr) 
         virial_fdotr_compute();
 
 	return;

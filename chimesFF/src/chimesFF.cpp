@@ -4699,7 +4699,639 @@ double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string&
 
 #endif
 
+static inline void chimes_accumulate_4b_force_stress_from_scalars(
+    const std::vector<double> & dr,
+    const double *fs,
+    std::vector<double> & force,
+    std::vector<double> & stress
+)
+{
+    // Runtime pair order:
+    //   0 = ij
+    //   1 = ik
+    //   2 = il
+    //   3 = jk
+    //   4 = jl
+    //   5 = kl
 
+    // ij
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[0*CHDIM+a] += fs[0] * dr[0*CHDIM+a];
+        force[1*CHDIM+a] -= fs[0] * dr[0*CHDIM+a];
+    }
+
+    // ik
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[0*CHDIM+a] += fs[1] * dr[1*CHDIM+a];
+        force[2*CHDIM+a] -= fs[1] * dr[1*CHDIM+a];
+    }
+
+    // il
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[0*CHDIM+a] += fs[2] * dr[2*CHDIM+a];
+        force[3*CHDIM+a] -= fs[2] * dr[2*CHDIM+a];
+    }
+
+    // jk
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[1*CHDIM+a] += fs[3] * dr[3*CHDIM+a];
+        force[2*CHDIM+a] -= fs[3] * dr[3*CHDIM+a];
+    }
+
+    // jl
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[1*CHDIM+a] += fs[4] * dr[4*CHDIM+a];
+        force[3*CHDIM+a] -= fs[4] * dr[4*CHDIM+a];
+    }
+
+    // kl
+    for (int a = 0; a < CHDIM; a++)
+    {
+        force[2*CHDIM+a] += fs[5] * dr[5*CHDIM+a];
+        force[3*CHDIM+a] -= fs[5] * dr[5*CHDIM+a];
+    }
+
+    for (int p = 0; p < 6; p++)
+    {
+        const double *rp = &dr[p*CHDIM];
+
+        stress[0] -= fs[p] * rp[0] * rp[0];
+        stress[1] -= fs[p] * rp[0] * rp[1];
+        stress[2] -= fs[p] * rp[0] * rp[2];
+        stress[3] -= fs[p] * rp[1] * rp[1];
+        stress[4] -= fs[p] * rp[1] * rp[2];
+        stress[5] -= fs[p] * rp[2] * rp[2];
+    }
+}
+
+bool chimesFF::prepare_4B_triplet_reuse(
+    const std::vector<double> & dx_trip_013,
+    const std::vector<int> & typ_idxs,
+    chimes4BTmp & tmp,
+    chimes4BTripletReuseTmp & reuse
+)
+{
+    reuse.clear();
+
+    // dx_trip_013:
+    //   [0] = rij
+    //   [1] = rik
+    //   [2] = rjk
+    //
+    // typ_idxs:
+    //   [0] = type i
+    //   [1] = type j
+    //   [2] = type k
+    //   [3] = type l context
+
+    const int idx =
+        typ_idxs[0]*natmtyps*natmtyps*natmtyps +
+        typ_idxs[1]*natmtyps*natmtyps +
+        typ_idxs[2]*natmtyps +
+        typ_idxs[3];
+
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return false;
+
+    std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
+
+    // Check triplet-side 4B cutoffs only.
+    //
+    // Runtime pair slots:
+    //   0 = ij
+    //   1 = ik
+    //   3 = jk
+    if (dx_trip_013[0] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]])
+        return false;
+
+    if (dx_trip_013[1] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]])
+        return false;
+
+    if (dx_trip_013[2] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]])
+        return false;
+
+#ifdef TABULATION
+    // Fast path for 1,2,4 SVD3x3 triplet-star tables.
+    if (tabulate_4B_svd3x3 &&
+        (int)tab_4b_svd3x3_rank.size() > quadidx &&
+        tab_4b_svd3x3_rank[quadidx] > 0)
+    {
+        int param_to_runtime[6];
+
+        for (int r = 0; r < 6; r++)
+            param_to_runtime[mapped_pair_idx[r]] = r;
+
+        int canon_to_runtime[6];
+
+        for (int c = 0; c < 6; c++)
+        {
+            int pslot;
+
+            if ((int)tab_4b_svd3x3_canon_to_param[quadidx].size() == 6)
+                pslot = tab_4b_svd3x3_canon_to_param[quadidx][c];
+            else
+                pslot = c;
+
+            canon_to_runtime[c] = param_to_runtime[pslot];
+        }
+
+        int left_dims[3]  = {0, 1, 3};
+        int right_dims[3] = {2, 4, 5};
+
+        if ((int)tab_4b_svd3x3_left_dims.size() > quadidx &&
+            (int)tab_4b_svd3x3_left_dims[quadidx].size() == 3)
+        {
+            left_dims[0] = tab_4b_svd3x3_left_dims[quadidx][0];
+            left_dims[1] = tab_4b_svd3x3_left_dims[quadidx][1];
+            left_dims[2] = tab_4b_svd3x3_left_dims[quadidx][2];
+        }
+
+        if ((int)tab_4b_svd3x3_right_dims.size() > quadidx &&
+            (int)tab_4b_svd3x3_right_dims[quadidx].size() == 3)
+        {
+            right_dims[0] = tab_4b_svd3x3_right_dims[quadidx][0];
+            right_dims[1] = tab_4b_svd3x3_right_dims[quadidx][1];
+            right_dims[2] = tab_4b_svd3x3_right_dims[quadidx][2];
+        }
+
+        const int lr0 = canon_to_runtime[left_dims[0]];
+        const int lr1 = canon_to_runtime[left_dims[1]];
+        const int lr2 = canon_to_runtime[left_dims[2]];
+
+        const int rr0 = canon_to_runtime[right_dims[0]];
+        const int rr1 = canon_to_runtime[right_dims[1]];
+        const int rr2 = canon_to_runtime[right_dims[2]];
+
+        // This triplet-reuse implementation requires the SVD left side
+        // to be exactly the triplet pairs ij,ik,jk.
+        //
+        // It may be in any local order, but the runtime slots must be
+        // drawn from {0,1,3}.
+        bool left_ok =
+            ((lr0 == 0 || lr0 == 1 || lr0 == 3) &&
+             (lr1 == 0 || lr1 == 1 || lr1 == 3) &&
+             (lr2 == 0 || lr2 == 1 || lr2 == 3));
+
+        bool right_ok =
+            ((rr0 == 2 || rr0 == 4 || rr0 == 5) &&
+             (rr1 == 2 || rr1 == 4 || rr1 == 5) &&
+             (rr2 == 2 || rr2 == 4 || rr2 == 5));
+
+        if (!left_ok || !right_ok)
+            return false;
+
+        double rleft[3];
+
+        for (int q = 0; q < 3; q++)
+        {
+            int runtime_slot = canon_to_runtime[left_dims[q]];
+
+            if (runtime_slot == 0)
+                rleft[q] = dx_trip_013[0];
+            else if (runtime_slot == 1)
+                rleft[q] = dx_trip_013[1];
+            else if (runtime_slot == 3)
+                rleft[q] = dx_trip_013[2];
+            else
+                return false;
+        }
+
+        const int R = tab_4b_svd3x3_rank[quadidx];
+
+        reuse.valid = true;
+        reuse.use_svd3x3 = true;
+        reuse.quadidx = quadidx;
+        reuse.type_l_context = typ_idxs[3];
+        reuse.rank = R;
+
+        reuse.left_runtime[0] = lr0;
+        reuse.left_runtime[1] = lr1;
+        reuse.left_runtime[2] = lr2;
+
+        reuse.right_runtime[0] = rr0;
+        reuse.right_runtime[1] = rr1;
+        reuse.right_runtime[2] = rr2;
+
+        reuse.X.resize(R);
+        reuse.X0.resize(R);
+        reuse.X1.resize(R);
+        reuse.X2.resize(R);
+
+        interpolateSVD3x3SideLinear(
+            tab_4b_svd3x3_left[quadidx],
+            rleft,
+            reuse.X.data(),
+            reuse.X0.data(),
+            reuse.X1.data(),
+            reuse.X2.data()
+        );
+
+        return true;
+    }
+#endif
+
+#ifdef TABULATION
+    // Other 4B table forms are not handled by this 3-pair reuse path.
+    // Caller should fall back to existing compute_4B_*_tab.
+    if (tabulate_4B_coeff || tabulate_4B_svd4x2)
+        return false;
+#endif
+
+    // Direct non-tabulated sparse partial contraction.
+    reuse.valid = true;
+    reuse.use_svd3x3 = false;
+    reuse.quadidx = quadidx;
+    reuse.type_l_context = typ_idxs[3];
+
+    std::vector<double> &Tn_ij  = tmp.Tn_ij;
+    std::vector<double> &Tn_ik  = tmp.Tn_ik;
+    std::vector<double> &Tn_jk  = tmp.Tn_jk;
+
+    std::vector<double> &Tnd_ij = tmp.Tnd_ij;
+    std::vector<double> &Tnd_ik = tmp.Tnd_ik;
+    std::vector<double> &Tnd_jk = tmp.Tnd_jk;
+
+    const int order = poly_orders[2];
+
+    const int pair_type_ij = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[1]];
+    const int pair_type_ik = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[2]];
+    const int pair_type_jk = atom_int_pair_map[typ_idxs[1]*natmtyps + typ_idxs[2]];
+
+    const double cutoff_ij_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]];
+    const double cutoff_ik_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]];
+    const double cutoff_jk_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]];
+
+    const double cutoff_ij_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[0]];
+    const double cutoff_ik_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]];
+    const double cutoff_jk_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]];
+
+    set_cheby_polys(
+        Tn_ij,
+        Tnd_ij,
+        dx_trip_013[0],
+        morse_var[pair_type_ij],
+        cutoff_ij_inner,
+        cutoff_ij_outer,
+        order
+    );
+
+    set_cheby_polys(
+        Tn_ik,
+        Tnd_ik,
+        dx_trip_013[1],
+        morse_var[pair_type_ik],
+        cutoff_ik_inner,
+        cutoff_ik_outer,
+        order
+    );
+
+    set_cheby_polys(
+        Tn_jk,
+        Tnd_jk,
+        dx_trip_013[2],
+        morse_var[pair_type_jk],
+        cutoff_jk_inner,
+        cutoff_jk_outer,
+        order
+    );
+
+    double fcut_ij, fcutderiv_ij;
+    double fcut_ik, fcutderiv_ik;
+    double fcut_jk, fcutderiv_jk;
+
+    get_fcut(dx_trip_013[0], cutoff_ij_outer, fcut_ij, fcutderiv_ij);
+    get_fcut(dx_trip_013[1], cutoff_ik_outer, fcut_ik, fcutderiv_ik);
+    get_fcut(dx_trip_013[2], cutoff_jk_outer, fcut_jk, fcutderiv_jk);
+
+    const int nterms = ncoeffs_4b[quadidx];
+
+    reuse.p_il.reserve(nterms);
+    reuse.p_jl.reserve(nterms);
+    reuse.p_kl.reserve(nterms);
+
+    reuse.A.reserve(nterms);
+    reuse.A_ij.reserve(nterms);
+    reuse.A_ik.reserve(nterms);
+    reuse.A_jk.reserve(nterms);
+
+    for (int coeffs = 0; coeffs < nterms; coeffs++)
+    {
+        int powers[6];
+
+        for (int p = 0; p < 6; p++)
+            powers[p] = chimes_4b_powers[quadidx][coeffs][mapped_pair_idx[p]];
+
+        const int p_ij = powers[0];
+        const int p_ik = powers[1];
+        const int p_il = powers[2];
+        const int p_jk = powers[3];
+        const int p_jl = powers[4];
+        const int p_kl = powers[5];
+
+        const double coeff = chimes_4b_params[quadidx][coeffs];
+
+        const double G_ij =
+            fcut_ij * Tn_ij[p_ij];
+
+        const double G_ik =
+            fcut_ik * Tn_ik[p_ik];
+
+        const double G_jk =
+            fcut_jk * Tn_jk[p_jk];
+
+        const double dG_ij =
+            fcutderiv_ij * Tn_ij[p_ij] +
+            fcut_ij * Tnd_ij[p_ij];
+
+        const double dG_ik =
+            fcutderiv_ik * Tn_ik[p_ik] +
+            fcut_ik * Tnd_ik[p_ik];
+
+        const double dG_jk =
+            fcutderiv_jk * Tn_jk[p_jk] +
+            fcut_jk * Tnd_jk[p_jk];
+
+        reuse.p_il.push_back(p_il);
+        reuse.p_jl.push_back(p_jl);
+        reuse.p_kl.push_back(p_kl);
+
+        reuse.A.push_back(
+            coeff * G_ij * G_ik * G_jk
+        );
+
+        reuse.A_ij.push_back(
+            coeff * dG_ij * G_ik * G_jk
+        );
+
+        reuse.A_ik.push_back(
+            coeff * G_ij * dG_ik * G_jk
+        );
+
+        reuse.A_jk.push_back(
+            coeff * G_ij * G_ik * dG_jk
+        );
+    }
+
+    return true;
+}
+
+void chimesFF::compute_4B_from_triplet_reuse(
+    const std::vector<double> & dx,
+    const std::vector<double> & dr,
+    const std::vector<int> & typ_idxs,
+    const chimes4BTripletReuseTmp & reuse,
+    std::vector<double> & force,
+    std::vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    if (!reuse.valid)
+        return;
+
+    const int quadidx = reuse.quadidx;
+
+    if (quadidx < 0)
+        return;
+
+    const int idx =
+        typ_idxs[0]*natmtyps*natmtyps*natmtyps +
+        typ_idxs[1]*natmtyps*natmtyps +
+        typ_idxs[2]*natmtyps +
+        typ_idxs[3];
+
+    std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
+
+    // Full 4B cutoff check.
+    for (int p = 0; p < 6; p++)
+    {
+        if (dx[p] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[p]])
+            return;
+    }
+
+    double dE_pair[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+#ifdef TABULATION
+    if (reuse.use_svd3x3)
+    {
+        const int R = reuse.rank;
+
+        double rright[3];
+
+        for (int q = 0; q < 3; q++)
+            rright[q] = dx[reuse.right_runtime[q]];
+
+        tmp.resize_svd_rank(R);
+
+        double *Y  = tmp.svd_Y.data();
+        double *Y0 = tmp.svd_Y0.data();
+        double *Y1 = tmp.svd_Y1.data();
+        double *Y2 = tmp.svd_Y2.data();
+
+        interpolateSVD3x3SideLinear(
+            tab_4b_svd3x3_right[quadidx],
+            rright,
+            Y,
+            Y0,
+            Y1,
+            Y2
+        );
+
+        double e4 = 0.0;
+
+        double dL0 = 0.0;
+        double dL1 = 0.0;
+        double dL2 = 0.0;
+
+        double dR0 = 0.0;
+        double dR1 = 0.0;
+        double dR2 = 0.0;
+
+        for (int p = 0; p < R; p++)
+        {
+            const double X  = reuse.X[p];
+            const double X0 = reuse.X0[p];
+            const double X1 = reuse.X1[p];
+            const double X2 = reuse.X2[p];
+
+            const double y  = Y[p];
+            const double y0 = Y0[p];
+            const double y1 = Y1[p];
+            const double y2 = Y2[p];
+
+            e4  += X * y;
+
+            dL0 += X0 * y;
+            dL1 += X1 * y;
+            dL2 += X2 * y;
+
+            dR0 += X * y0;
+            dR1 += X * y1;
+            dR2 += X * y2;
+        }
+
+        energy += e4;
+
+        dE_pair[reuse.left_runtime[0]] = dL0;
+        dE_pair[reuse.left_runtime[1]] = dL1;
+        dE_pair[reuse.left_runtime[2]] = dL2;
+
+        dE_pair[reuse.right_runtime[0]] = dR0;
+        dE_pair[reuse.right_runtime[1]] = dR1;
+        dE_pair[reuse.right_runtime[2]] = dR2;
+
+        double fs[6];
+
+        for (int p = 0; p < 6; p++)
+            fs[p] = dE_pair[p] / dx[p];
+
+        chimes_accumulate_4b_force_stress_from_scalars(
+            dr,
+            fs,
+            force,
+            stress
+        );
+
+        return;
+    }
+#endif
+
+    // Direct non-tabulated polynomial finish.
+    std::vector<double> &Tn_il  = tmp.Tn_il;
+    std::vector<double> &Tn_jl  = tmp.Tn_jl;
+    std::vector<double> &Tn_kl  = tmp.Tn_kl;
+
+    std::vector<double> &Tnd_il = tmp.Tnd_il;
+    std::vector<double> &Tnd_jl = tmp.Tnd_jl;
+    std::vector<double> &Tnd_kl = tmp.Tnd_kl;
+
+    const int order = poly_orders[2];
+
+    const int pair_type_il = atom_int_pair_map[typ_idxs[0]*natmtyps + typ_idxs[3]];
+    const int pair_type_jl = atom_int_pair_map[typ_idxs[1]*natmtyps + typ_idxs[3]];
+    const int pair_type_kl = atom_int_pair_map[typ_idxs[2]*natmtyps + typ_idxs[3]];
+
+    const double cutoff_il_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[2]];
+    const double cutoff_jl_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[4]];
+    const double cutoff_kl_outer = chimes_4b_cutoff[quadidx][1][mapped_pair_idx[5]];
+
+    const double cutoff_il_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[2]];
+    const double cutoff_jl_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]];
+    const double cutoff_kl_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]];
+
+    set_cheby_polys(
+        Tn_il,
+        Tnd_il,
+        dx[2],
+        morse_var[pair_type_il],
+        cutoff_il_inner,
+        cutoff_il_outer,
+        order
+    );
+
+    set_cheby_polys(
+        Tn_jl,
+        Tnd_jl,
+        dx[4],
+        morse_var[pair_type_jl],
+        cutoff_jl_inner,
+        cutoff_jl_outer,
+        order
+    );
+
+    set_cheby_polys(
+        Tn_kl,
+        Tnd_kl,
+        dx[5],
+        morse_var[pair_type_kl],
+        cutoff_kl_inner,
+        cutoff_kl_outer,
+        order
+    );
+
+    double fcut_il, fcutderiv_il;
+    double fcut_jl, fcutderiv_jl;
+    double fcut_kl, fcutderiv_kl;
+
+    get_fcut(dx[2], cutoff_il_outer, fcut_il, fcutderiv_il);
+    get_fcut(dx[4], cutoff_jl_outer, fcut_jl, fcutderiv_jl);
+    get_fcut(dx[5], cutoff_kl_outer, fcut_kl, fcutderiv_kl);
+
+    double dE_ij = 0.0;
+    double dE_ik = 0.0;
+    double dE_il = 0.0;
+    double dE_jk = 0.0;
+    double dE_jl = 0.0;
+    double dE_kl = 0.0;
+
+    const int nterms = (int)reuse.A.size();
+
+    for (int q = 0; q < nterms; q++)
+    {
+        const int p_il = reuse.p_il[q];
+        const int p_jl = reuse.p_jl[q];
+        const int p_kl = reuse.p_kl[q];
+
+        const double G_il =
+            fcut_il * Tn_il[p_il];
+
+        const double G_jl =
+            fcut_jl * Tn_jl[p_jl];
+
+        const double G_kl =
+            fcut_kl * Tn_kl[p_kl];
+
+        const double dG_il =
+            fcutderiv_il * Tn_il[p_il] +
+            fcut_il * Tnd_il[p_il];
+
+        const double dG_jl =
+            fcutderiv_jl * Tn_jl[p_jl] +
+            fcut_jl * Tnd_jl[p_jl];
+
+        const double dG_kl =
+            fcutderiv_kl * Tn_kl[p_kl] +
+            fcut_kl * Tnd_kl[p_kl];
+
+        const double right = G_il * G_jl * G_kl;
+
+        energy += reuse.A[q] * right;
+
+        dE_ij += reuse.A_ij[q] * right;
+        dE_ik += reuse.A_ik[q] * right;
+        dE_jk += reuse.A_jk[q] * right;
+
+        dE_il += reuse.A[q] * dG_il * G_jl * G_kl;
+        dE_jl += reuse.A[q] * G_il * dG_jl * G_kl;
+        dE_kl += reuse.A[q] * G_il * G_jl * dG_kl;
+    }
+
+    dE_pair[0] = dE_ij;
+    dE_pair[1] = dE_ik;
+    dE_pair[2] = dE_il;
+    dE_pair[3] = dE_jk;
+    dE_pair[4] = dE_jl;
+    dE_pair[5] = dE_kl;
+
+    double fs[6];
+
+    for (int p = 0; p < 6; p++)
+        fs[p] = dE_pair[p] / dx[p];
+
+    chimes_accumulate_4b_force_stress_from_scalars(
+        dr,
+        fs,
+        force,
+        stress
+    );
+}
 
 void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp &tmp)
 {              

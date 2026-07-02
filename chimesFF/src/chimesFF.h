@@ -43,6 +43,7 @@ public:
     vector<double> Tnd ;
 } ;
 
+
 inline chimes2BTmp::chimes2BTmp(int poly_order) : Tn(poly_order+1), Tnd(poly_order+1) 
 {
     ;
@@ -231,7 +232,95 @@ public:
                         , vector<vector<double>> & clusters_4b, bool fingerprint
                     #endif
                     );
+        struct chimes4BTripletReuseTmp
+    {
+        bool valid = false;
+        bool use_svd3x3 = false;
 
+        int quadidx = -1;
+        int type_l_context = -1;
+
+        // Runtime pair slots:
+        //   0 = ij
+        //   1 = ik
+        //   2 = il
+        //   3 = jk
+        //   4 = jl
+        //   5 = kl
+        //
+        // Triplet-star SVD3x3:
+        //   left  = ij,ik,jk = 0,1,3
+        //   right = il,jl,kl = 2,4,5
+        int left_runtime[3]  = {0, 1, 3};
+        int right_runtime[3] = {2, 4, 5};
+
+        int rank = 0;
+
+        std::vector<double> X;
+        std::vector<double> X0;
+        std::vector<double> X1;
+        std::vector<double> X2;
+
+        // Sparse direct-polynomial partial contraction.
+        std::vector<int> p_il;
+        std::vector<int> p_jl;
+        std::vector<int> p_kl;
+
+        std::vector<double> A;
+        std::vector<double> A_ij;
+        std::vector<double> A_ik;
+        std::vector<double> A_jk;
+
+        void clear()
+        {
+            valid = false;
+            use_svd3x3 = false;
+
+            quadidx = -1;
+            type_l_context = -1;
+            rank = 0;
+
+            left_runtime[0] = 0;
+            left_runtime[1] = 1;
+            left_runtime[2] = 3;
+
+            right_runtime[0] = 2;
+            right_runtime[1] = 4;
+            right_runtime[2] = 5;
+
+            X.clear();
+            X0.clear();
+            X1.clear();
+            X2.clear();
+
+            p_il.clear();
+            p_jl.clear();
+            p_kl.clear();
+
+            A.clear();
+            A_ij.clear();
+            A_ik.clear();
+            A_jk.clear();
+        }
+    };
+
+    bool prepare_4B_triplet_reuse(
+        const std::vector<double> & dx_trip_013,
+        const std::vector<int> & typ_idxs,
+        chimes4BTmp & tmp,
+        chimes4BTripletReuseTmp & reuse
+    );
+
+    void compute_4B_from_triplet_reuse(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        const chimes4BTripletReuseTmp & reuse,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
     void get_cutoff_2B(vector<vector<double> >  & cutoff_2b);   // Populates the 2b cutoffs
     
     double max_cutoff_2B(bool silent = false);    // Returns the largest 2B cutoff
@@ -479,6 +568,8 @@ public:
     std::vector<int> tab_4b_svd3x3_rank;
     std::vector<std::vector<int>> tab_4b_svd3x3_canon_to_param;
     std::vector<std::vector<std::string>> tab_4b_svd3x3_canonical_pair_types;
+    std::vector<std::vector<int>> tab_4b_svd3x3_left_dims;
+    std::vector<std::vector<int>> tab_4b_svd3x3_right_dims;
 
     void read_4B_svd3x3_meta(std::string meta_file, int quadidx);
     void read_4B_svd3x3_tab(std::string data_file, int quadidx, bool left_side);
