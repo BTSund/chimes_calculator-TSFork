@@ -885,56 +885,80 @@ void PairCHIMES::compute(int eflag, int vflag)
 						* Fallback for unsupported tabulation modes, excluded mappings,
 						* or non-triplet-star tables.
 						*/
-		#ifdef TABULATION
-						if (chimes_calculator.tabulate_4B_svd4x2)
-						{
-							chimes_calculator.compute_4B_svd4x2_tab(
-								dist_4b,
-								dr_4b,
-								typ_idxs_4b,
-								force_4b,
-								stensor,
-								energy,
-								chimes_4btmp
-							);
-						}
-						else if (chimes_calculator.tabulate_4B_svd3x3)
-						{
-							chimes_calculator.compute_4B_svd3x3_tab(
-								dist_4b,
-								dr_4b,
-								typ_idxs_4b,
-								force_4b,
-								stensor,
-								energy,
-								chimes_4btmp
-							);
-						}
-						else if (chimes_calculator.tabulate_4B_coeff)
-						{
-							chimes_calculator.compute_4B_tab_coeff(
-								dist_4b,
-								dr_4b,
-								typ_idxs_4b,
-								force_4b,
-								stensor,
-								energy,
-								chimes_4btmp
-							);
-						}
-						else
-		#endif
-						{
-							chimes_calculator.compute_4B(
-								dist_4b,
-								dr_4b,
-								typ_idxs_4b,
-								force_4b,
-								stensor,
-								energy,
-								chimes_4btmp
-							);
-						}
+#ifdef TABULATION
+                        if (chimes_calculator.tabulate_4B_cp_direct)
+                        {
+                            chimes_calculator.compute_4B_cp_direct(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
+                        else if (chimes_calculator.tabulate_4B_cp)
+                        {
+                            chimes_calculator.compute_4B_cp_tab(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
+                        else if (chimes_calculator.tabulate_4B_svd4x2)
+                        {
+                            chimes_calculator.compute_4B_svd4x2_tab(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
+                        else if (chimes_calculator.tabulate_4B_svd3x3)
+                        {
+                            chimes_calculator.compute_4B_svd3x3_tab(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
+                        else if (chimes_calculator.tabulate_4B_coeff)
+                        {
+                            chimes_calculator.compute_4B_tab_coeff(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
+                        else
+#endif
+                        {
+                            chimes_calculator.compute_4B(
+                                dist_4b,
+                                dr_4b,
+                                typ_idxs_4b,
+                                force_4b,
+                                stensor,
+                                energy,
+                                chimes_4btmp
+                            );
+                        }
 					}
 
 					for (idx = 0; idx < CHDIM; idx++)

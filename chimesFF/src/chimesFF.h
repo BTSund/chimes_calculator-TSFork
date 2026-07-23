@@ -144,6 +144,26 @@ public:
         }
     }
 #endif
+#ifdef TABULATION
+    // Scratch buffers for CP 1D 4B tabulation.
+    //
+    // cp_val[m][q] = X_m[q]
+    // cp_der[m][q] = dX_m[q]/dr_m
+    std::vector<double> cp_val[6];
+    std::vector<double> cp_der[6];
+
+    inline void resize_cp_rank(int Q)
+    {
+        for (int m = 0; m < 6; m++)
+        {
+            if ((int)cp_val[m].size() < Q)
+                cp_val[m].resize(Q);
+
+            if ((int)cp_der[m].size() < Q)
+                cp_der[m].resize(Q);
+        }
+    }
+#endif
 };
 inline chimes4BTmp::chimes4BTmp(int poly_order) : Tn_ij(poly_order+1), Tn_ik(poly_order+1), Tn_il(poly_order+1),
                                                   Tn_jk(poly_order+1), Tn_jl(poly_order+1), Tn_kl(poly_order+1),
@@ -338,7 +358,54 @@ public:
     inline int  get_badness();
     inline void reset_badness();
     
-    
+    #ifdef TABULATION
+    // -------------------------------------------------------------------------
+    // Exact/on-the-fly CP 4-body evaluator
+    // -------------------------------------------------------------------------
+
+    bool tabulate_4B_cp_direct = false;
+
+    // [quadidx] rank
+    std::vector<int> tab_4b_cp_direct_rank;
+
+    // [quadidx][canonical_slot] = parameter slot
+    std::vector<std::vector<int>> tab_4b_cp_direct_canon_to_param;
+
+    // [quadidx][canonical_slot] = max Chebyshev power/order for that slot
+    std::vector<std::vector<int>> tab_4b_cp_direct_orders;
+
+    // Flattened factor matrices:
+    //
+    // tab_4b_cp_direct_factor[quadidx][canonical_slot][p*rank + q]
+    //
+    // where:
+    //   p = Chebyshev power index
+    //   q = CP rank index
+    std::vector<std::vector<std::vector<float>>> tab_4b_cp_direct_factor;
+
+    void read_4B_cp_direct_file(std::string factor_file, int quadidx);
+
+    void compute_4B_cp_direct(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_cp_direct(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp,
+        std::vector<double> & force_scalar_in
+    );
+#endif
     // New for tabulation -- 2b
 #ifdef TABULATION
     bool                    tabulate_2B;          
@@ -594,6 +661,69 @@ public:
     );
 
     void compute_4B_svd3x3_tab(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp,
+        std::vector<double> & force_scalar_in
+    );
+#endif
+#ifdef TABULATION
+    // -------------------------------------------------------------------------
+    // CP 1D 4-body tabulation
+    // -------------------------------------------------------------------------
+
+    bool tabulate_4B_cp = false;
+
+    struct CP1DTable
+    {
+        int rank = 0;
+        int ngrid = 0;
+
+        double r0 = 0.0;
+        double dr = 0.0;
+        double invdr = 0.0;
+
+        // Row-major storage:
+        //   val[row*rank + q]
+        //   der[row*rank + q]
+        std::vector<float> val;
+        std::vector<float> der;
+    };
+
+    // One six-slot CP table per quad type:
+    //   tab_4b_cp_slot[quadidx][canonical_slot]
+    std::vector<std::vector<CP1DTable>> tab_4b_cp_slot;
+
+    // Metadata
+    std::vector<int> tab_4b_cp_rank;
+    std::vector<std::vector<int>> tab_4b_cp_canon_to_param;
+    std::vector<std::vector<std::string>> tab_4b_cp_canonical_pair_types;
+
+    void read_4B_cp_meta(std::string meta_file, int quadidx);
+    void read_4B_cp_tab(std::string data_file, int quadidx, int slot);
+
+    void interpolateCP1DLinear(
+        const CP1DTable &tab,
+        double rquery,
+        double *val,
+        double *der
+    );
+
+    void compute_4B_cp_tab(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_cp_tab(
         const std::vector<double> & dx,
         const std::vector<double> & dr,
         const std::vector<int> & typ_idxs,

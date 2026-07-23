@@ -118,6 +118,7 @@ chimesFF::chimesFF()
     tabulate_4B_coeff = false;
     tabulate_4B_svd3x3 = false;
     tabulate_4B_svd4x2 = false;
+    tabulate_4B_cp = false;
 #endif
     
     fcut_type = fcutType::CUBIC ;
@@ -365,7 +366,211 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
     tab_files.close();
 }
 #endif
+#ifdef TABULATION
+void chimesFF::read_4B_cp_direct_file(std::string factor_file, int quadidx)
+{
+    std::ifstream in(factor_file);
 
+    if (!in.is_open())
+    {
+        std::cout << "ERROR: Could not open 4B CP-direct factor file: "
+                  << factor_file << std::endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_direct_rank.size() <= quadidx)
+    {
+        tab_4b_cp_direct_rank.resize(quadidx + 1, 0);
+        tab_4b_cp_direct_canon_to_param.resize(quadidx + 1);
+        tab_4b_cp_direct_orders.resize(quadidx + 1);
+        tab_4b_cp_direct_factor.resize(quadidx + 1);
+    }
+
+    tab_4b_cp_direct_canon_to_param[quadidx].clear();
+    tab_4b_cp_direct_orders[quadidx].clear();
+    tab_4b_cp_direct_factor[quadidx].clear();
+    tab_4b_cp_direct_factor[quadidx].resize(6);
+
+    std::string line;
+    std::vector<std::string> items;
+
+    int rank_read = -1;
+    bool saw_header = false;
+
+    while (std::getline(in, line))
+    {
+        int n = split_line(line, items);
+
+        if (n == 0)
+            continue;
+
+        if (items[0] == "CHIMES_4B_CP_DIRECT")
+        {
+            saw_header = true;
+        }
+        else if (items[0] == "END_CHIMES_4B_CP_DIRECT")
+        {
+            break;
+        }
+        else if (items[0] == "rank")
+        {
+            rank_read = std::stoi(items[1]);
+            tab_4b_cp_direct_rank[quadidx] = rank_read;
+        }
+        else if (items[0] == "canon_to_param")
+        {
+            tab_4b_cp_direct_canon_to_param[quadidx].clear();
+
+            for (int i = 1; i < n; i++)
+                tab_4b_cp_direct_canon_to_param[quadidx].push_back(std::stoi(items[i]));
+        }
+        else if (items[0] == "max_orders")
+        {
+            tab_4b_cp_direct_orders[quadidx].clear();
+
+            for (int i = 1; i < n; i++)
+                tab_4b_cp_direct_orders[quadidx].push_back(std::stoi(items[i]));
+        }
+        else if (items[0] == "factor")
+        {
+            if (rank_read <= 0)
+            {
+                std::cout << "ERROR: CP-direct factor encountered before valid rank in "
+                          << factor_file << std::endl;
+                exit(0);
+            }
+
+            if (n != 4)
+            {
+                std::cout << "ERROR: Expected factor line format: factor <slot> <nrows> <rank>"
+                          << std::endl;
+                std::cout << "Line: " << line << std::endl;
+                exit(0);
+            }
+
+            int c = std::stoi(items[1]);
+            int nrows = std::stoi(items[2]);
+            int ncols = std::stoi(items[3]);
+
+            if (c < 0 || c >= 6)
+            {
+                std::cout << "ERROR: CP-direct factor slot out of range: "
+                          << c << std::endl;
+                exit(0);
+            }
+
+            if (ncols != rank_read)
+            {
+                std::cout << "ERROR: CP-direct factor rank mismatch for slot "
+                          << c << ". File rank = " << rank_read
+                          << ", factor cols = " << ncols << std::endl;
+                exit(0);
+            }
+
+            tab_4b_cp_direct_factor[quadidx][c].resize(
+                (size_t)nrows * (size_t)ncols
+            );
+
+            for (int p = 0; p < nrows; p++)
+            {
+                if (!std::getline(in, line))
+                {
+                    std::cout << "ERROR: Unexpected EOF reading CP-direct factor rows"
+                              << std::endl;
+                    exit(0);
+                }
+
+                int nr = split_line(line, items);
+
+                if (nr != ncols + 1)
+                {
+                    std::cout << "ERROR: Expected " << ncols + 1
+                              << " entries in CP-direct factor row, got "
+                              << nr << std::endl;
+                    std::cout << "Line: " << line << std::endl;
+                    exit(0);
+                }
+
+                int prow = std::stoi(items[0]);
+
+                if (prow != p)
+                {
+                    std::cout << "ERROR: CP-direct factor row index mismatch. Expected "
+                              << p << ", got " << prow << std::endl;
+                    exit(0);
+                }
+
+                for (int q = 0; q < ncols; q++)
+                {
+                    tab_4b_cp_direct_factor[quadidx][c][
+                        (size_t)p * (size_t)ncols + (size_t)q
+                    ] = static_cast<float>(std::stod(items[q + 1]));
+                }
+            }
+        }
+    }
+
+    in.close();
+
+    if (!saw_header)
+    {
+        std::cout << "ERROR: Missing CHIMES_4B_CP_DIRECT header in "
+                  << factor_file << std::endl;
+        exit(0);
+    }
+
+    if (rank_read <= 0)
+    {
+        std::cout << "ERROR: Invalid or missing CP-direct rank in "
+                  << factor_file << std::endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_direct_canon_to_param[quadidx].size() != 6)
+    {
+        std::cout << "ERROR: CP-direct canon_to_param must have length 6 in "
+                  << factor_file << std::endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_direct_orders[quadidx].size() != 6)
+    {
+        std::cout << "ERROR: CP-direct max_orders must have length 6 in "
+                  << factor_file << std::endl;
+        exit(0);
+    }
+
+    for (int c = 0; c < 6; c++)
+    {
+        int expected_rows = tab_4b_cp_direct_orders[quadidx][c] + 1;
+        int expected_size = expected_rows * rank_read;
+
+        if ((int)tab_4b_cp_direct_factor[quadidx][c].size() != expected_size)
+        {
+            std::cout << "ERROR: CP-direct factor slot " << c
+                      << " has wrong size. Expected " << expected_size
+                      << ", got "
+                      << tab_4b_cp_direct_factor[quadidx][c].size()
+                      << std::endl;
+            exit(0);
+        }
+    }
+
+    if (rank == 0)
+    {
+        std::cout << "chimesFF: Read 4B CP-direct factor file for quad type "
+                  << quadidx << std::endl;
+        std::cout << "chimesFF: \tfile = " << factor_file << std::endl;
+        std::cout << "chimesFF: \trank = " << rank_read << std::endl;
+        std::cout << "chimesFF: \tcanon_to_param:";
+
+        for (int c = 0; c < 6; c++)
+            std::cout << " " << tab_4b_cp_direct_canon_to_param[quadidx][c];
+
+        std::cout << std::endl;
+    }
+}
+#endif
 #ifdef TABULATION
 void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
 {
@@ -1586,7 +1791,6 @@ void chimesFF::read_parameters(string paramfile)
             }
             exit(0);
         }
-        
         if(line.find("PAIRTYP: CHEBYSHEV") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
@@ -2371,7 +2575,49 @@ void chimesFF::read_parameters(string paramfile)
 
     if(line.find("ENDFILE") != string::npos)
         break;
+#ifdef TABULATION
+        if(line.find("4B CP TABLES:") != string::npos)
+        {
+            split_line(line, tmp_str_items);
 
+            int ntab = stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab
+                     << " CP 1D 4B tables" << endl;
+
+            tabulate_4B_cp = true;
+
+            for (int t=0; t<ntab; t++)
+            {
+                line = get_next_line(param_file);
+                split_line(line, tmp_str_items);
+
+                if (tmp_str_items.size() != 8)
+                {
+                    cout << "ERROR: Expected CP table line format:" << endl;
+                    cout << "       <quadidx> <slot0.dat> <slot1.dat> <slot2.dat> <slot3.dat> <slot4.dat> <slot5.dat> <meta>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+
+                int quadidx = stoi(tmp_str_items[0]);
+
+                string slotfile[6];
+                for (int s=0; s<6; s++)
+                    slotfile[s] = join_path_chimes(param_file_path, tmp_str_items[1+s]);
+
+                string metafile = join_path_chimes(param_file_path, tmp_str_items[7]);
+
+                read_4B_cp_meta(metafile, quadidx);
+
+                for (int s=0; s<6; s++)
+                    read_4B_cp_tab(slotfile[s], quadidx, s);
+            }
+
+            continue;
+        }
+#endif
     #ifdef TABULATION
         if(line.find("4B COEFF TABLES:") != string::npos)
         {
@@ -2407,6 +2653,43 @@ void chimesFF::read_parameters(string paramfile)
             continue;
         }
     #endif
+
+
+#ifdef TABULATION
+        if (line.find("4B CP DIRECT:") != std::string::npos)
+        {
+            split_line(line, tmp_str_items);
+
+            int ntab = std::stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                std::cout << "chimesFF: Will read " << ntab
+                          << " exact CP 4B factor files" << std::endl;
+
+            tabulate_4B_cp_direct = true;
+
+            for (int t = 0; t < ntab; t++)
+            {
+                line = get_next_line(param_file);
+                split_line(line, tmp_str_items);
+
+                if (tmp_str_items.size() != 2)
+                {
+                    std::cout << "ERROR: Expected CP-direct line format:" << std::endl;
+                    std::cout << "       <quadidx> <factorfile>" << std::endl;
+                    std::cout << "Line: " << line << std::endl;
+                    exit(0);
+                }
+
+                int quadidx = std::stoi(tmp_str_items[0]);
+                std::string factorfile = join_path_chimes(param_file_path, tmp_str_items[1]);
+
+                read_4B_cp_direct_file(factorfile, quadidx);
+            }
+
+            continue;
+        }
+#endif
         #ifdef TABULATION
         if(line.find("4B SVD3X3 TABLES:") != string::npos)
         {
@@ -4769,6 +5052,821 @@ static inline void chimes_accumulate_4b_force_stress_from_scalars(
     }
 }
 
+#ifdef TABULATION
+void chimesFF::compute_4B_cp_direct(
+    const std::vector<double> & dx,
+    const std::vector<double> & dr,
+    const std::vector<int> & typ_idxs,
+    std::vector<double> & force,
+    std::vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    std::vector<double> dummy_force_scalar(6);
+
+    compute_4B_cp_direct(
+        dx,
+        dr,
+        typ_idxs,
+        force,
+        stress,
+        energy,
+        tmp,
+        dummy_force_scalar
+    );
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::compute_4B_cp_direct(
+    const std::vector<double> & dx,
+    const std::vector<double> & dr,
+    const std::vector<int> & typ_idxs,
+    std::vector<double> & force,
+    std::vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp,
+    std::vector<double> & force_scalar_in
+)
+{
+    const int npairs = 6;
+
+    const int idx =
+        typ_idxs[0] * natmtyps * natmtyps * natmtyps +
+        typ_idxs[1] * natmtyps * natmtyps +
+        typ_idxs[2] * natmtyps +
+        typ_idxs[3];
+
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return;
+
+    if ((int)tab_4b_cp_direct_rank.size() <= quadidx ||
+        tab_4b_cp_direct_rank[quadidx] <= 0)
+    {
+        compute_4B(
+            dx,
+            dr,
+            typ_idxs,
+            force,
+            stress,
+            energy,
+            tmp,
+            force_scalar_in
+        );
+        return;
+    }
+
+    std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
+
+    // Full 4B cutoff check in runtime slot order.
+    for (int rslot = 0; rslot < npairs; rslot++)
+    {
+        const int pslot = mapped_pair_idx[rslot];
+
+        if (dx[rslot] >= chimes_4b_cutoff[quadidx][1][pslot])
+            return;
+    }
+
+    const int R = tab_4b_cp_direct_rank[quadidx];
+
+    /*
+     * Runtime pair slots:
+     *   0 = ij
+     *   1 = ik
+     *   2 = il
+     *   3 = jk
+     *   4 = jl
+     *   5 = kl
+     *
+     * mapped_pair_idx[rslot] = parameter pair slot.
+     */
+    int param_to_runtime[6];
+
+    for (int rslot = 0; rslot < 6; rslot++)
+        param_to_runtime[mapped_pair_idx[rslot]] = rslot;
+
+    /*
+     * Canonical CP slot -> runtime slot.
+     */
+    int canon_to_runtime[6];
+
+    for (int c = 0; c < 6; c++)
+    {
+        const int pslot = tab_4b_cp_direct_canon_to_param[quadidx][c];
+        canon_to_runtime[c] = param_to_runtime[pslot];
+    }
+
+    /*
+     * Runtime pair type indices.
+     */
+    int pair_type_runtime[6];
+
+    pair_type_runtime[0] =
+        atom_int_pair_map[typ_idxs[0] * natmtyps + typ_idxs[1]];
+
+    pair_type_runtime[1] =
+        atom_int_pair_map[typ_idxs[0] * natmtyps + typ_idxs[2]];
+
+    pair_type_runtime[2] =
+        atom_int_pair_map[typ_idxs[0] * natmtyps + typ_idxs[3]];
+
+    pair_type_runtime[3] =
+        atom_int_pair_map[typ_idxs[1] * natmtyps + typ_idxs[2]];
+
+    pair_type_runtime[4] =
+        atom_int_pair_map[typ_idxs[1] * natmtyps + typ_idxs[3]];
+
+    pair_type_runtime[5] =
+        atom_int_pair_map[typ_idxs[2] * natmtyps + typ_idxs[3]];
+
+    /*
+     * Scratch:
+     *
+     * tmp.cp_val[c][q] = X_c(q)
+     * tmp.cp_der[c][q] = dX_c(q)/dr_runtime
+     */
+    tmp.resize_cp_rank(R);
+
+    double *X[6] =
+    {
+        tmp.cp_val[0].data(),
+        tmp.cp_val[1].data(),
+        tmp.cp_val[2].data(),
+        tmp.cp_val[3].data(),
+        tmp.cp_val[4].data(),
+        tmp.cp_val[5].data()
+    };
+
+    double *D[6] =
+    {
+        tmp.cp_der[0].data(),
+        tmp.cp_der[1].data(),
+        tmp.cp_der[2].data(),
+        tmp.cp_der[3].data(),
+        tmp.cp_der[4].data(),
+        tmp.cp_der[5].data()
+    };
+
+    /*
+     * Reuse chimes4BTmp polynomial buffers for the six canonical slots.
+     */
+    std::vector<double> *Tn_ptr[6] =
+    {
+        &tmp.Tn_ij,
+        &tmp.Tn_ik,
+        &tmp.Tn_il,
+        &tmp.Tn_jk,
+        &tmp.Tn_jl,
+        &tmp.Tn_kl
+    };
+
+    std::vector<double> *Tnd_ptr[6] =
+    {
+        &tmp.Tnd_ij,
+        &tmp.Tnd_ik,
+        &tmp.Tnd_il,
+        &tmp.Tnd_jk,
+        &tmp.Tnd_jl,
+        &tmp.Tnd_kl
+    };
+
+    /*
+     * For each canonical CP slot:
+     *   1. find corresponding runtime distance
+     *   2. build Chebyshev basis and derivative
+     *   3. project through CP factor matrix
+     */
+    for (int c = 0; c < 6; c++)
+    {
+        const int rslot = canon_to_runtime[c];
+        const int pslot = mapped_pair_idx[rslot];
+
+        const int pair_type = pair_type_runtime[rslot];
+
+        const double r = dx[rslot];
+
+        const double rmin = chimes_4b_cutoff[quadidx][0][pslot];
+        const double rmax = chimes_4b_cutoff[quadidx][1][pslot];
+
+        const int order = tab_4b_cp_direct_orders[quadidx][c];
+
+        std::vector<double> &Tn  = *Tn_ptr[c];
+        std::vector<double> &Tnd = *Tnd_ptr[c];
+
+        if ((int)Tn.size() < order + 1)
+            Tn.resize(order + 1);
+
+        if ((int)Tnd.size() < order + 1)
+            Tnd.resize(order + 1);
+
+        set_cheby_polys(
+            Tn,
+            Tnd,
+            r,
+            morse_var[pair_type],
+            rmin,
+            rmax,
+            order
+        );
+
+        double fcut;
+        double fcutderiv;
+
+        get_fcut(
+            r,
+            rmax,
+            fcut,
+            fcutderiv
+        );
+
+        for (int q = 0; q < R; q++)
+        {
+            X[c][q] = 0.0;
+            D[c][q] = 0.0;
+        }
+
+        const std::vector<float> &A =
+            tab_4b_cp_direct_factor[quadidx][c];
+
+        for (int p = 0; p <= order; p++)
+        {
+            const double G =
+                fcut * Tn[p];
+
+            const double dG =
+                fcutderiv * Tn[p] +
+                fcut * Tnd[p];
+
+            const size_t off = (size_t)p * (size_t)R;
+
+            for (int q = 0; q < R; q++)
+            {
+                const double a = (double)A[off + (size_t)q];
+
+                X[c][q] += a * G;
+                D[c][q] += a * dG;
+            }
+        }
+    }
+
+    /*
+     * CP energy and canonical pair-distance derivatives.
+     */
+    double e4 = 0.0;
+
+    double dE_canon[6] =
+    {
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    };
+
+    for (int q = 0; q < R; q++)
+    {
+        const double x0 = X[0][q];
+        const double x1 = X[1][q];
+        const double x2 = X[2][q];
+        const double x3 = X[3][q];
+        const double x4 = X[4][q];
+        const double x5 = X[5][q];
+
+        const double d0 = D[0][q];
+        const double d1 = D[1][q];
+        const double d2 = D[2][q];
+        const double d3 = D[3][q];
+        const double d4 = D[4][q];
+        const double d5 = D[5][q];
+
+        const double x01 = x0 * x1;
+        const double x23 = x2 * x3;
+        const double x45 = x4 * x5;
+
+        const double prod =
+            x01 * x23 * x45;
+
+        e4 += prod;
+
+        dE_canon[0] += d0 * x1 * x23 * x45;
+        dE_canon[1] += x0 * d1 * x23 * x45;
+        dE_canon[2] += x01 * d2 * x3 * x45;
+        dE_canon[3] += x01 * x2 * d3 * x45;
+        dE_canon[4] += x01 * x23 * d4 * x5;
+        dE_canon[5] += x01 * x23 * x4 * d5;
+    }
+
+    energy += e4;
+
+    /*
+     * Map canonical derivatives back to runtime pair slots.
+     */
+    double dE_runtime[6] =
+    {
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    };
+
+    for (int c = 0; c < 6; c++)
+    {
+        const int rslot = canon_to_runtime[c];
+        dE_runtime[rslot] = dE_canon[c];
+    }
+
+    double force_scalar[6];
+
+    for (int rslot = 0; rslot < 6; rslot++)
+        force_scalar[rslot] = dE_runtime[rslot] / dx[rslot];
+
+    chimes_accumulate_4b_force_stress_from_scalars(
+        dr,
+        force_scalar,
+        force,
+        stress
+    );
+
+    for (int rslot = 0; rslot < 6; rslot++)
+        force_scalar_in[rslot] = force_scalar[rslot];
+}
+#endif
+
+#ifdef TABULATION
+void chimesFF::read_4B_cp_meta(string meta_file, int quadidx)
+{
+    ifstream in(meta_file);
+
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B CP metadata file: "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_rank.size() <= quadidx)
+    {
+        tab_4b_cp_rank.resize(quadidx+1, 0);
+        tab_4b_cp_canon_to_param.resize(quadidx+1);
+        tab_4b_cp_canonical_pair_types.resize(quadidx+1);
+        tab_4b_cp_slot.resize(quadidx+1);
+    }
+
+    if ((int)tab_4b_cp_slot[quadidx].size() != 6)
+        tab_4b_cp_slot[quadidx].resize(6);
+
+    string line;
+    vector<string> items;
+
+    int rank_read = -1;
+    vector<int> canon_to_param;
+    vector<string> canonical_pair_types;
+
+    while (getline(in, line))
+    {
+        int n = split_line(line, items);
+        if (n == 0)
+            continue;
+
+        if (items[0] == "rank")
+        {
+            rank_read = stoi(items[1]);
+        }
+        else if (items[0] == "canon_to_param")
+        {
+            canon_to_param.clear();
+            for (int i=1; i<n; i++)
+                canon_to_param.push_back(stoi(items[i]));
+        }
+        else if (
+            items[0] == "pair_types_canonical" ||
+            items[0] == "canonical_pair_types"
+        )
+        {
+            canonical_pair_types.clear();
+            for (int i=1; i<n; i++)
+                canonical_pair_types.push_back(items[i]);
+        }
+    }
+
+    in.close();
+
+    if (rank_read <= 0)
+    {
+        cout << "ERROR: Invalid or missing CP rank in "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    if ((int)canon_to_param.size() != 6)
+    {
+        cout << "ERROR: Missing or invalid canon_to_param in "
+             << meta_file << endl;
+        exit(0);
+    }
+
+    tab_4b_cp_rank[quadidx] = rank_read;
+    tab_4b_cp_canon_to_param[quadidx] = canon_to_param;
+    tab_4b_cp_canonical_pair_types[quadidx] = canonical_pair_types;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B CP metadata for quad type "
+             << quadidx << endl;
+        cout << "chimesFF: \trank = " << rank_read << endl;
+        cout << "chimesFF: \tcanon_to_param:";
+        for (int i=0; i<6; i++)
+            cout << " " << canon_to_param[i];
+        cout << endl;
+    }
+}
+#endif
+#ifdef TABULATION
+void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
+{
+    ifstream in(data_file);
+
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B CP slot table file: "
+             << data_file << endl;
+        exit(0);
+    }
+
+    if (slot < 0 || slot >= 6)
+    {
+        cout << "ERROR: CP slot index out of range: " << slot << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_rank.size() <= quadidx ||
+        tab_4b_cp_rank[quadidx] <= 0)
+    {
+        cout << "ERROR: Must read CP metadata before CP data file for quad type "
+             << quadidx << endl;
+        exit(0);
+    }
+
+    if ((int)tab_4b_cp_slot.size() <= quadidx)
+        tab_4b_cp_slot.resize(quadidx+1);
+
+    if ((int)tab_4b_cp_slot[quadidx].size() != 6)
+        tab_4b_cp_slot[quadidx].resize(6);
+
+    const int Q = tab_4b_cp_rank[quadidx];
+
+    string line;
+    vector<string> items;
+
+    line = get_next_line(in);
+    int nrows = stoi(line);
+
+    if (nrows < 2)
+    {
+        cout << "ERROR: CP slot table must contain at least two rows: "
+             << data_file << endl;
+        exit(0);
+    }
+
+    CP1DTable &tab = tab_4b_cp_slot[quadidx][slot];
+
+    tab.rank = Q;
+    tab.ngrid = nrows;
+
+    tab.val.resize((size_t)nrows * (size_t)Q);
+    tab.der.resize((size_t)nrows * (size_t)Q);
+
+    for (int row=0; row<nrows; row++)
+    {
+        line = get_next_line(in);
+        int n = split_line(line, items);
+
+        int expected = 1 + 2*Q;
+
+        if (n != expected)
+        {
+            cout << "ERROR: Expected " << expected
+                 << " entries in CP slot table row, got " << n << endl;
+            cout << "File: " << data_file << endl;
+            cout << "Line: " << line << endl;
+            exit(0);
+        }
+
+        double x = stod(items[0]);
+
+        if (row == 0)
+            tab.r0 = x;
+
+        if (row == 1)
+            tab.dr = x - tab.r0;
+
+        size_t off = (size_t)row * (size_t)Q;
+
+        int start_val = 1;
+        int start_der = 1 + Q;
+
+        for (int q=0; q<Q; q++)
+        {
+            tab.val[off+q] = static_cast<float>(stod(items[start_val + q]));
+            tab.der[off+q] = static_cast<float>(stod(items[start_der + q]));
+        }
+    }
+
+    in.close();
+
+    if (tab.dr <= 0.0)
+    {
+        cout << "ERROR: Invalid CP grid spacing in "
+             << data_file << endl;
+        exit(0);
+    }
+
+    tab.invdr = 1.0 / tab.dr;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Read 4B CP slot table for quad type "
+             << quadidx << ", slot " << slot << endl;
+        cout << "chimesFF: \tfile  = " << data_file << endl;
+        cout << "chimesFF: \tngrid = " << nrows << endl;
+        cout << "chimesFF: \trank  = " << Q << endl;
+    }
+}
+#endif
+#ifdef TABULATION
+void chimesFF::interpolateCP1DLinear(
+    const CP1DTable &tab,
+    double rquery,
+    double *val,
+    double *der
+)
+{
+    const int Q = tab.rank;
+    const int ngrid = tab.ngrid;
+
+    int i = (int)((rquery - tab.r0) * tab.invdr);
+
+    if (i < 0)
+        i = 0;
+
+    if (i > ngrid - 2)
+        i = ngrid - 2;
+
+    const double h = tab.dr;
+    const double invh = tab.invdr;
+
+    double t = (rquery - (tab.r0 + i*h)) * invh;
+
+    if (t < 0.0)
+        t = 0.0;
+
+    if (t > 1.0)
+        t = 1.0;
+
+    const double t2 = t * t;
+    const double t3 = t2 * t;
+
+    /*
+     * Cubic Hermite basis:
+     *
+     * y(t) =
+     *     h00(t) y0
+     *   + h10(t) h m0
+     *   + h01(t) y1
+     *   + h11(t) h m1
+     *
+     * where m0 = dy/dr at r0 and m1 = dy/dr at r1.
+     *
+     * dy/dr =
+     *     dh00/dt * y0 / h
+     *   + dh10/dt * m0
+     *   + dh01/dt * y1 / h
+     *   + dh11/dt * m1
+     */
+
+    const double h00 =  2.0*t3 - 3.0*t2 + 1.0;
+    const double h10 =        t3 - 2.0*t2 + t;
+    const double h01 = -2.0*t3 + 3.0*t2;
+    const double h11 =        t3 -       t2;
+
+    const double dh00_dr = ( 6.0*t2 - 6.0*t) * invh;
+    const double dh10_dt =   3.0*t2 - 4.0*t + 1.0;
+    const double dh01_dr = (-6.0*t2 + 6.0*t) * invh;
+    const double dh11_dt =   3.0*t2 - 2.0*t;
+
+    const size_t off0 = (size_t)i       * (size_t)Q;
+    const size_t off1 = (size_t)(i + 1) * (size_t)Q;
+
+    const float *V = tab.val.data();
+    const float *D = tab.der.data();
+
+    for (int q = 0; q < Q; q++)
+    {
+        const double y0 = (double)V[off0 + q];
+        const double y1 = (double)V[off1 + q];
+
+        const double m0 = (double)D[off0 + q];
+        const double m1 = (double)D[off1 + q];
+
+        val[q] =
+            h00 * y0 +
+            h10 * h * m0 +
+            h01 * y1 +
+            h11 * h * m1;
+
+        der[q] =
+            dh00_dr * y0 +
+            dh10_dt * m0 +
+            dh01_dr * y1 +
+            dh11_dt * m1;
+    }
+}
+#endif
+#ifdef TABULATION
+void chimesFF::compute_4B_cp_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp
+)
+{
+    vector<double> dummy_force_scalar(6);
+
+    compute_4B_cp_tab(
+        dx,
+        dr,
+        typ_idxs,
+        force,
+        stress,
+        energy,
+        tmp,
+        dummy_force_scalar
+    );
+}
+#endif
+#ifdef TABULATION
+void chimesFF::compute_4B_cp_tab(
+    const vector<double> & dx,
+    const vector<double> & dr,
+    const vector<int> & typ_idxs,
+    vector<double> & force,
+    vector<double> & stress,
+    double & energy,
+    chimes4BTmp & tmp,
+    vector<double> & force_scalar_in
+)
+{
+    const int npairs = 6;
+
+    const int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
+                  + typ_idxs[1]*natmtyps*natmtyps
+                  + typ_idxs[2]*natmtyps
+                  + typ_idxs[3];
+
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return;
+
+    if ((int)tab_4b_cp_rank.size() <= quadidx ||
+        tab_4b_cp_rank[quadidx] <= 0)
+    {
+        compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
+        return;
+    }
+
+    vector<int> &mapped_pair_idx = pair_int_quad_map[idx];
+
+    // Full 4B cutoff check.
+    for (int p=0; p<npairs; p++)
+    {
+        if (dx[p] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[p]])
+            return;
+    }
+
+    // Build canonical-to-runtime map.
+    int param_to_runtime[6];
+
+    for (int r=0; r<6; r++)
+        param_to_runtime[mapped_pair_idx[r]] = r;
+
+    int canon_to_runtime[6];
+
+    for (int c=0; c<6; c++)
+    {
+        int pslot;
+
+        if ((int)tab_4b_cp_canon_to_param[quadidx].size() == 6)
+            pslot = tab_4b_cp_canon_to_param[quadidx][c];
+        else
+            pslot = c;
+
+        canon_to_runtime[c] = param_to_runtime[pslot];
+    }
+
+    const int Q = tab_4b_cp_rank[quadidx];
+
+    tmp.resize_cp_rank(Q);
+
+    double *X[6] =
+    {
+        tmp.cp_val[0].data(),
+        tmp.cp_val[1].data(),
+        tmp.cp_val[2].data(),
+        tmp.cp_val[3].data(),
+        tmp.cp_val[4].data(),
+        tmp.cp_val[5].data()
+    };
+
+    double *D[6] =
+    {
+        tmp.cp_der[0].data(),
+        tmp.cp_der[1].data(),
+        tmp.cp_der[2].data(),
+        tmp.cp_der[3].data(),
+        tmp.cp_der[4].data(),
+        tmp.cp_der[5].data()
+    };
+
+    // Interpolate all six canonical slot tables.
+    for (int c=0; c<6; c++)
+    {
+        int rslot = canon_to_runtime[c];
+
+        interpolateCP1DLinear(
+            tab_4b_cp_slot[quadidx][c],
+            dx[rslot],
+            X[c],
+            D[c]
+        );
+    }
+
+    double e4 = 0.0;
+
+    double dE_canon[6] =
+    {
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    };
+
+    for (int q=0; q<Q; q++)
+    {
+        const double x0 = X[0][q];
+        const double x1 = X[1][q];
+        const double x2 = X[2][q];
+        const double x3 = X[3][q];
+        const double x4 = X[4][q];
+        const double x5 = X[5][q];
+
+        const double d0 = D[0][q];
+        const double d1 = D[1][q];
+        const double d2 = D[2][q];
+        const double d3 = D[3][q];
+        const double d4 = D[4][q];
+        const double d5 = D[5][q];
+
+        const double x01 = x0 * x1;
+        const double x23 = x2 * x3;
+        const double x45 = x4 * x5;
+
+        const double prod = x01 * x23 * x45;
+
+        e4 += prod;
+
+        dE_canon[0] += d0 * x1 * x23 * x45;
+        dE_canon[1] += x0 * d1 * x23 * x45;
+        dE_canon[2] += x01 * d2 * x3 * x45;
+        dE_canon[3] += x01 * x2 * d3 * x45;
+        dE_canon[4] += x01 * x23 * d4 * x5;
+        dE_canon[5] += x01 * x23 * x4 * d5;
+    }
+
+    energy += e4;
+
+    double dE_pair[6] =
+    {
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+    };
+
+    for (int c=0; c<6; c++)
+        dE_pair[canon_to_runtime[c]] = dE_canon[c];
+
+    double force_scalar[6];
+
+    for (int p=0; p<6; p++)
+        force_scalar[p] = dE_pair[p] / dx[p];
+
+    chimes_accumulate_4b_force_stress_from_scalars(
+        dr,
+        force_scalar,
+        force,
+        stress
+    );
+
+    for (int p=0; p<6; p++)
+        force_scalar_in[p] = force_scalar[p];
+}
+#endif
+
+
 bool chimesFF::prepare_4B_triplet_reuse(
     const std::vector<double> & dx_trip_013,
     const std::vector<int> & typ_idxs,
@@ -4938,9 +6036,7 @@ bool chimesFF::prepare_4B_triplet_reuse(
 #endif
 
 #ifdef TABULATION
-    // Other 4B table forms are not handled by this 3-pair reuse path.
-    // Caller should fall back to existing compute_4B_*_tab.
-    if (tabulate_4B_coeff || tabulate_4B_svd4x2)
+    if (tabulate_4B_coeff || tabulate_4B_svd4x2 || tabulate_4B_cp || tabulate_4B_cp_direct)
         return false;
 #endif
 
