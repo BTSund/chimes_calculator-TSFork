@@ -256,6 +256,10 @@ public:
     {
         bool valid = false;
         bool use_svd3x3 = false;
+#ifdef TABULATION
+        bool use_cp_tab = false;
+        bool use_cp_direct = false;
+#endif
 
         int quadidx = -1;
         int type_l_context = -1;
@@ -295,6 +299,10 @@ public:
         {
             valid = false;
             use_svd3x3 = false;
+#ifdef TABULATION
+            use_cp_tab = false;
+            use_cp_direct = false;
+#endif
 
             quadidx = -1;
             type_l_context = -1;
@@ -341,6 +349,55 @@ public:
         double & energy,
         chimes4BTmp & tmp
     );
+    #ifdef TABULATION
+    bool prepare_4B_cp_tab_triplet_reuse(
+        const std::vector<double> & dx_trip_013,
+        const std::vector<int> & typ_idxs,
+        chimes4BTmp & tmp,
+        chimes4BTripletReuseTmp & reuse
+    );
+
+    bool prepare_4B_cp_direct_triplet_reuse(
+        const std::vector<double> & dx_trip_013,
+        const std::vector<int> & typ_idxs,
+        chimes4BTmp & tmp,
+        chimes4BTripletReuseTmp & reuse
+    );
+
+    void compute_4B_cp_tab_from_triplet_reuse(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        const chimes4BTripletReuseTmp & reuse,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void compute_4B_cp_direct_from_triplet_reuse(
+        const std::vector<double> & dx,
+        const std::vector<double> & dr,
+        const std::vector<int> & typ_idxs,
+        const chimes4BTripletReuseTmp & reuse,
+        std::vector<double> & force,
+        std::vector<double> & stress,
+        double & energy,
+        chimes4BTmp & tmp
+    );
+
+    void eval_4B_cp_direct_slot(
+        int quadidx,
+        int canon_slot,
+        int runtime_slot,
+        double r,
+        const std::vector<int> & typ_idxs,
+        const std::vector<int> & mapped_pair_idx,
+        chimes4BTmp & tmp,
+        double *X,
+        double *D
+    );
+#endif
     void get_cutoff_2B(vector<vector<double> >  & cutoff_2b);   // Populates the 2b cutoffs
     
     double max_cutoff_2B(bool silent = false);    // Returns the largest 2B cutoff

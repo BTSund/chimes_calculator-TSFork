@@ -43,8 +43,226 @@
 #include <string>
 #include <fstream>
 #include <algorithm>
+#include <iomanip>
 
 using namespace LAMMPS_NS;
+
+#ifdef CHIMES_PROFILE
+
+#ifndef CHIMES_PROFILE_EVERY
+#define CHIMES_PROFILE_EVERY 100
+#endif
+
+enum ChimesProfID
+{
+    PROF_EV_SETUP = 0,
+
+    PROF_MB_BUILD,
+
+    PROF_1B,
+    PROF_2B_DIST,
+    PROF_2B_EVAL,
+    PROF_2B_FORCE_TALLY,
+
+    PROF_3B_DIST,
+    PROF_3B_EVAL,
+    PROF_3B_FORCE_TALLY,
+
+    PROF_4B_SEED,
+    PROF_4B_DIST,
+    PROF_4B_PREPARE,
+    PROF_4B_EVAL,
+    PROF_4B_EVAL_REUSE,
+    PROF_4B_EVAL_CP_TAB,
+    PROF_4B_EVAL_CP_DIRECT,
+    PROF_4B_EVAL_COEFF,
+    PROF_4B_EVAL_SVD3,
+    PROF_4B_EVAL_SVD4,
+    PROF_4B_EVAL_DIRECT,
+    PROF_4B_FORCE_TALLY,
+
+    PROF_FDOTR,
+    PROF_COMPUTE_TOTAL,
+
+    PROF_N
+};
+
+static const char *chimes_prof_name[PROF_N] =
+{
+    "ev_setup",
+
+    "mb_build",
+
+    "1B_energy",
+    "2B_distance",
+    "2B_eval",
+    "2B_force_tally",
+
+    "3B_distance",
+    "3B_eval",
+    "3B_force_tally",
+
+    "4B_seed",
+    "4B_l_distances",
+    "4B_prepare_reuse",
+    "4B_eval_total",
+    "4B_eval_reuse",
+    "4B_eval_cp_tab",
+    "4B_eval_cp_direct",
+    "4B_eval_coeff",
+    "4B_eval_svd3",
+    "4B_eval_svd4",
+    "4B_eval_direct",
+    "4B_force_tally",
+
+    "virial_fdotr",
+    "compute_total"
+};
+
+struct ChimesProfData
+{
+    double t[PROF_N];
+    double n[PROF_N];
+
+    ChimesProfData()
+    {
+        reset();
+    }
+
+    void reset()
+    {
+        for (int i = 0; i < PROF_N; i++)
+        {
+            t[i] = 0.0;
+            n[i] = 0.0;
+        }
+    }
+
+    void add(int id, double dt)
+    {
+        t[id] += dt;
+        n[id] += 1.0;
+    }
+};
+
+static ChimesProfData chimes_prof;
+
+struct ChimesProfScope
+{
+    int id;
+    double t0;
+
+    ChimesProfScope(int id_in)
+        : id(id_in), t0(MPI_Wtime())
+    {
+    }
+
+    ~ChimesProfScope()
+    {
+        chimes_prof.add(id, MPI_Wtime() - t0);
+    }
+};
+
+#define CHIMES_PROF_ADD(id, dt) \
+    do { chimes_prof.add((id), (dt)); } while (0)
+
+#define CHIMES_PROF_SCOPE(id) \
+    ChimesProfScope chimes_prof_scope_##__LINE__((id))
+
+#define CHIMES_PROF_BLOCK(id, block) \
+    do { ChimesProfScope chimes_prof_scope_block_##__LINE__((id)); block } while (0)
+
+static void chimes_profile_report(
+    MPI_Comm world,
+    int me,
+    long long timestep
+)
+{
+    int nprocs = 1;
+    MPI_Comm_size(world, &nprocs);
+
+    double local_t[PROF_N];
+    double local_n[PROF_N];
+
+    for (int i = 0; i < PROF_N; i++)
+    {
+        local_t[i] = chimes_prof.t[i];
+        local_n[i] = chimes_prof.n[i];
+    }
+
+    double sum_t[PROF_N];
+    double max_t[PROF_N];
+    double sum_n[PROF_N];
+
+    MPI_Reduce(local_t, sum_t, PROF_N, MPI_DOUBLE, MPI_SUM, 0, world);
+    MPI_Reduce(local_t, max_t, PROF_N, MPI_DOUBLE, MPI_MAX, 0, world);
+    MPI_Reduce(local_n, sum_n, PROF_N, MPI_DOUBLE, MPI_SUM, 0, world);
+
+    if (me == 0)
+    {
+        const double total = max_t[PROF_COMPUTE_TOTAL] > 0.0
+                           ? max_t[PROF_COMPUTE_TOTAL]
+                           : 1.0;
+
+        std::cout << std::endl;
+        std::cout << "================================================================================" << std::endl;
+        std::cout << "CHIMES_PROFILE timestep " << timestep
+                  << " interval timing over last "
+                  << CHIMES_PROFILE_EVERY << " steps" << std::endl;
+        std::cout << "Times are seconds. max_rank_time is usually the bottleneck metric." << std::endl;
+        std::cout << "--------------------------------------------------------------------------------" << std::endl;
+
+        std::cout
+            << std::setw(24) << "section"
+            << std::setw(16) << "max_rank"
+            << std::setw(16) << "avg_rank"
+            << std::setw(14) << "%total"
+            << std::setw(16) << "calls_sum"
+            << std::setw(16) << "us_per_call"
+            << std::endl;
+
+        std::cout << "--------------------------------------------------------------------------------" << std::endl;
+
+        for (int i = 0; i < PROF_N; i++)
+        {
+            if (sum_n[i] <= 0.0 && sum_t[i] <= 0.0)
+                continue;
+
+            const double avg_rank = sum_t[i] / (double)nprocs;
+            const double pct = 100.0 * max_t[i] / total;
+            const double us_per_call = (sum_n[i] > 0.0)
+                                     ? 1.0e6 * sum_t[i] / sum_n[i]
+                                     : 0.0;
+
+            std::cout
+                << std::setw(24) << chimes_prof_name[i]
+                << std::setw(16) << std::scientific << std::setprecision(6) << max_t[i]
+                << std::setw(16) << std::scientific << std::setprecision(6) << avg_rank
+                << std::setw(14) << std::fixed << std::setprecision(2) << pct
+                << std::setw(16) << std::fixed << std::setprecision(0) << sum_n[i]
+                << std::setw(16) << std::scientific << std::setprecision(6) << us_per_call
+                << std::endl;
+        }
+
+        std::cout << "================================================================================" << std::endl;
+        std::cout << std::endl;
+    }
+
+    chimes_prof.reset();
+}
+
+#else
+
+#define CHIMES_PROF_ADD(id, dt) \
+    do { } while (0)
+
+#define CHIMES_PROF_SCOPE(id) \
+    do { } while (0)
+
+#define CHIMES_PROF_BLOCK(id, block) \
+    do { block } while (0)
+
+#endif
 
 /*	Functions required by LAMMPS:
 
@@ -443,6 +661,10 @@ void PairCHIMES::build_mb_neighlists()
 
 void PairCHIMES::compute(int eflag, int vflag)
 {
+
+#ifdef CHIMES_PROFILE
+    const double chimes_compute_t0 = MPI_Wtime();
+#endif
 	// Vars for access to chimesFF compute_XB functions
 	
 	std::vector  <double>  stensor(6);	// pointers to system stress tensor
@@ -475,16 +697,18 @@ void PairCHIMES::compute(int eflag, int vflag)
 	
 	// Set up vars controlling if energy/pressure (virial) contributions are computed
 
-	if (eflag || vflag) 
-	{
-  		ev_setup(eflag,vflag);
-	}
-	else 
-	{
-		evflag      = 0;
-		vflag_fdotr = 0;
-  		vflag_atom  = 0;
-	}
+CHIMES_PROF_BLOCK(PROF_EV_SETUP, {
+    if (eflag || vflag)
+    {
+        ev_setup(eflag, vflag);
+    }
+    else
+    {
+        evflag      = 0;
+        vflag_fdotr = 0;
+        vflag_atom  = 0;
+    }
+});
 
 	// Compile if fingerprinting desired
 #ifdef FINGERPRINT
@@ -514,19 +738,24 @@ void PairCHIMES::compute(int eflag, int vflag)
 	
 	// Build the ChIMES many-body neighbor lists.. only do so when LAMMPS neighborlist has been updated
 	
-	if ( neighbor->ago == 0)
-	{
-		if (chimes_calculator.rank == 0)
-			std::cout << "Updating chimesFF neighbor lists..." << std::endl;
-			
-		build_mb_neighlists();		
-		if (chimes_calculator.rank == 0)
-		{
-			std::cout << "	Rank " << me << " 3-body list size: " << neighborlist_3mers.size() << std::endl;
-			std::cout << "	Rank " << me << " 4-body list size: " << neighborlist_4mers.size() << std::endl;
-			std::cout << "	...update complete" << std::endl;
-		}
-	}
+if (neighbor->ago == 0)
+{
+    if (chimes_calculator.rank == 0)
+        std::cout << "Updating chimesFF neighbor lists..." << std::endl;
+
+    CHIMES_PROF_BLOCK(PROF_MB_BUILD, {
+        build_mb_neighlists();
+    });
+
+    if (chimes_calculator.rank == 0)
+    {
+        std::cout << "  Rank " << me << " 3-body list size: "
+                  << neighborlist_3mers.size() << std::endl;
+        std::cout << "  Rank " << me << " 4-body list size: "
+                  << neighborlist_4mers.size() << std::endl;
+        std::cout << "  ...update complete" << std::endl;
+    }
+}
     
     // Prepare the badness variable
     
@@ -549,8 +778,9 @@ void PairCHIMES::compute(int eflag, int vflag)
 		// First, get the single-atom energy contribution
 		
 		energy = 0.0;
-		
-		chimes_calculator.compute_1B(chimes_type[type[i]-1], energy);
+		CHIMES_PROF_BLOCK(PROF_1B, {
+    chimes_calculator.compute_1B(chimes_type[type[i]-1], energy);
+});
         
         atmidxlst[0][0] = i;
 		
@@ -573,8 +803,9 @@ void PairCHIMES::compute(int eflag, int vflag)
 				continue;
 				
 			// Get distance using ghost atoms... don't need MIC since we're using ghost atoms
-
-			dist = get_dist(i,j,&dr[0]);
+CHIMES_PROF_BLOCK(PROF_2B_DIST, {
+    dist = get_dist(i, j, &dr[0]);
+});
 			
 			typ_idxs_2b[0] = chimes_type[type[i]-1]; // Type (index) of the current atom... subtract 1 to account for chimesFF vs LAMMPS numbering convention
 			typ_idxs_2b[1] = chimes_type[type[j]-1];
@@ -586,43 +817,80 @@ void PairCHIMES::compute(int eflag, int vflag)
 			std::fill(stensor.begin(), stensor.end(), 0.0) ;
 
 			energy = 0.0;	
+CHIMES_PROF_BLOCK(PROF_2B_EVAL, {
 #ifdef TABULATION
-			if (chimes_calculator.tabulate_2B)
-                chimes_calculator.compute_2B_tab( dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmp);
-            else
+    if (chimes_calculator.tabulate_2B)
+    {
+        chimes_calculator.compute_2B_tab(
+            dist,
+            dr,
+            typ_idxs_2b,
+            force_2b,
+            stensor,
+            energy,
+            chimes_2btmp
+        );
+    }
+    else
 #endif
-			#ifdef FINGERPRINT
-			valid_order = (i < j);
-			if (tmp_FP && valid_order){
-				double tmp_force_scalar;
-				chimes_calculator.compute_2B( dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmp, tmp_force_scalar, tmp_dist_2b, tmp_FP && valid_order);	// Auto-updates badness
-			} else {
-			#endif
-				chimes_calculator.compute_2B( dist, dr, typ_idxs_2b, force_2b, stensor, energy, chimes_2btmp);	// Auto-updates badness		
-			#ifdef FINGERPRINT
-			}
-			#endif
-			for (idx=0; idx<3; idx++)
-			{
-				f[i][idx] += force_2b[0*CHDIM+idx] ;
-				f[j][idx] += force_2b[1*CHDIM+idx] ;
-			}
+    {
+#ifdef FINGERPRINT
+        valid_order = (i < j);
 
-			// "Save"/tally up the energy and stresses to the global virial/energy data objects (see pair.cpp ~ line 1000)
-			// Compute pressure, (in contrast to chimes_md) AFTER penalty has been added		
-			
-			if(vflag_atom)
-            {
-			    atmidxlst[0][0] = i;
-			    atmidxlst[0][1] = j;
-            }
-			tmp_dist    [0] = dist;
-			
-			if (evflag)
-				ev_tally_mb(2, 1, atmidxlst, energy, stensor);         
-		}
-	}
-	#ifdef FINGERPRINT
+        if (tmp_FP && valid_order)
+        {
+            double tmp_force_scalar;
+
+            chimes_calculator.compute_2B(
+                dist,
+                dr,
+                typ_idxs_2b,
+                force_2b,
+                stensor,
+                energy,
+                chimes_2btmp,
+                tmp_force_scalar,
+                tmp_dist_2b,
+                tmp_FP && valid_order
+            );
+        }
+        else
+#endif
+        {
+            chimes_calculator.compute_2B(
+                dist,
+                dr,
+                typ_idxs_2b,
+                force_2b,
+                stensor,
+                energy,
+                chimes_2btmp
+            );
+        }
+    }
+});
+			CHIMES_PROF_BLOCK(PROF_2B_FORCE_TALLY, {
+    for (idx=0; idx<3; idx++)
+    {
+        f[i][idx] += force_2b[0*CHDIM+idx];
+        f[j][idx] += force_2b[1*CHDIM+idx];
+    }
+
+    if (vflag_atom)
+    {
+        atmidxlst[0][0] = i;
+        atmidxlst[0][1] = j;
+    }
+
+    tmp_dist[0] = dist;
+
+    if (evflag)
+        ev_tally_mb(2, 1, atmidxlst, energy, stensor);
+});
+		} // end loop over j neighbors
+	}     // end loop over i atoms
+
+#ifdef FINGERPRINT
 	std::string ts = std::to_string(update->ntimestep);
 	if (tmp_FP)
 	{
@@ -659,9 +927,11 @@ void PairCHIMES::compute(int eflag, int vflag)
 				if (chimes_type[type[k]-1] < 0) continue;
 
 				// Shared triplet distances.
-				dist_3b[0] = get_dist(i, j, &dr_3b[0*CHDIM]);
-				dist_3b[1] = get_dist(i, k, &dr_3b[1*CHDIM]);
-				dist_3b[2] = get_dist(j, k, &dr_3b[2*CHDIM]);
+				CHIMES_PROF_BLOCK(PROF_3B_DIST, {
+					dist_3b[0] = get_dist(i, j, &dr_3b[0*CHDIM]);
+					dist_3b[1] = get_dist(i, k, &dr_3b[1*CHDIM]);
+					dist_3b[2] = get_dist(j, k, &dr_3b[2*CHDIM]);
+				});
 
 				const double dist_ij = dist_3b[0];
 				const double dist_ik = dist_3b[1];
@@ -692,51 +962,55 @@ void PairCHIMES::compute(int eflag, int vflag)
 
 						energy = 0.0;
 
-		#ifdef TABULATION
-						if (chimes_calculator.tabulate_3B)
-						{
-							chimes_calculator.compute_3B_tab(
-								dist_3b,
-								dr_3b,
-								typ_idxs_3b,
-								force_3b,
-								stensor,
-								energy,
-								chimes_3btmp
-							);
-						}
-						else
-		#endif
-						{
-							chimes_calculator.compute_3B(
-								dist_3b,
-								dr_3b,
-								typ_idxs_3b,
-								force_3b,
-								stensor,
-								energy,
-								chimes_3btmp
-							);
-						}
+		CHIMES_PROF_BLOCK(PROF_3B_EVAL, {
+#ifdef TABULATION
+    if (chimes_calculator.tabulate_3B)
+    {
+        chimes_calculator.compute_3B_tab(
+            dist_3b,
+            dr_3b,
+            typ_idxs_3b,
+            force_3b,
+            stensor,
+            energy,
+            chimes_3btmp
+        );
+    }
+    else
+#endif
+    {
+        chimes_calculator.compute_3B(
+            dist_3b,
+            dr_3b,
+            typ_idxs_3b,
+            force_3b,
+            stensor,
+            energy,
+            chimes_3btmp
+        );
+    }
+});
 
-						for (idx = 0; idx < CHDIM; idx++)
-						{
-							f[i][idx] += force_3b[0*CHDIM + idx];
-							f[j][idx] += force_3b[1*CHDIM + idx];
-							f[k][idx] += force_3b[2*CHDIM + idx];
-						}
+												CHIMES_PROF_BLOCK(PROF_3B_FORCE_TALLY, {
+							for (idx = 0; idx < CHDIM; idx++)
+							{
+								f[i][idx] += force_3b[0*CHDIM + idx];
+								f[j][idx] += force_3b[1*CHDIM + idx];
+								f[k][idx] += force_3b[2*CHDIM + idx];
+							}
 
-						if (vflag_atom)
-						{
-							atmidxlst[0][0] = i; atmidxlst[0][1] = j;
-							atmidxlst[1][0] = i; atmidxlst[1][1] = k;
-							atmidxlst[2][0] = j; atmidxlst[2][1] = k;
-						}
+							if (vflag_atom)
+							{
+								atmidxlst[0][0] = i; atmidxlst[0][1] = j;
+								atmidxlst[1][0] = i; atmidxlst[1][1] = k;
+								atmidxlst[2][0] = j; atmidxlst[2][1] = k;
+							}
 
-						if (evflag)
-							ev_tally_mb(3, 3, atmidxlst, energy, stensor);
-					}
-				}
+							if (evflag)
+								ev_tally_mb(3, 3, atmidxlst, energy, stensor);
+						});
+					} // end 3B cutoff check
+				}     // end if poly_orders[1] > 0
 
 				/*
 				* 4B seed check.
@@ -749,9 +1023,16 @@ void PairCHIMES::compute(int eflag, int vflag)
 				if (chimes_calculator.poly_orders[2] == 0)
 					continue;
 
-				if (dist_ij >= maxcut_4b ||
-					dist_ik >= maxcut_4b ||
-					dist_jk >= maxcut_4b)
+				bool chimes_4b_seed_ok = false;
+
+				CHIMES_PROF_BLOCK(PROF_4B_SEED, {
+					chimes_4b_seed_ok =
+						(dist_ij < maxcut_4b &&
+						dist_ik < maxcut_4b &&
+						dist_jk < maxcut_4b);
+				});
+
+				if (!chimes_4b_seed_ok)
 					continue;
 
 				reuse_cache.clear();
@@ -803,17 +1084,26 @@ void PairCHIMES::compute(int eflag, int vflag)
 
 					if (chimes_type[type[l]-1] < 0)
 						continue;
+					bool chimes_4b_l_ok = false;
 
-					dist_4b[2] = get_dist(i, l, &dr_4b[2*CHDIM]);
-					if (dist_4b[2] >= maxcut_4b)
-						continue;
+					CHIMES_PROF_BLOCK(PROF_4B_DIST, {
+						dist_4b[2] = get_dist(i, l, &dr_4b[2*CHDIM]);
 
-					dist_4b[4] = get_dist(j, l, &dr_4b[4*CHDIM]);
-					if (dist_4b[4] >= maxcut_4b)
-						continue;
+						if (dist_4b[2] < maxcut_4b)
+						{
+							dist_4b[4] = get_dist(j, l, &dr_4b[4*CHDIM]);
 
-					dist_4b[5] = get_dist(k, l, &dr_4b[5*CHDIM]);
-					if (dist_4b[5] >= maxcut_4b)
+							if (dist_4b[4] < maxcut_4b)
+							{
+								dist_4b[5] = get_dist(k, l, &dr_4b[5*CHDIM]);
+
+								if (dist_4b[5] < maxcut_4b)
+									chimes_4b_l_ok = true;
+							}
+						}
+					});
+
+					if (!chimes_4b_l_ok)
 						continue;
 
 					const int type_l = chimes_type[type[l]-1];
@@ -842,21 +1132,21 @@ void PairCHIMES::compute(int eflag, int vflag)
 					{
 						chimesFF::chimes4BTripletReuseTmp reuse_new;
 
-						std::vector<double> dx_trip_013(3);
-						dx_trip_013[0] = dist_ij;
-						dx_trip_013[1] = dist_ik;
-						dx_trip_013[2] = dist_jk;
 
-						bool ok = chimes_calculator.prepare_4B_triplet_reuse(
-							dx_trip_013,
-							typ_idxs_4b,
-							chimes_4btmp,
-							reuse_new
-						);
+						bool ok = false;
+
+						CHIMES_PROF_BLOCK(PROF_4B_PREPARE, {
+							ok = chimes_calculator.prepare_4B_triplet_reuse(
+								dist_3b,
+								typ_idxs_4b,
+								chimes_4btmp,
+								reuse_new
+							);
+						});
 
 						if (ok)
 						{
-							reuse_cache.push_back(reuse_new);
+							reuse_cache.push_back(std::move(reuse_new));
 							reuse_ptr = &reuse_cache.back();
 						}
 					}
@@ -866,129 +1156,159 @@ void PairCHIMES::compute(int eflag, int vflag)
 
 					energy = 0.0;
 
-					if (reuse_ptr != nullptr && reuse_ptr->valid)
-					{
-						chimes_calculator.compute_4B_from_triplet_reuse(
-							dist_4b,
-							dr_4b,
-							typ_idxs_4b,
-							*reuse_ptr,
-							force_4b,
-							stensor,
-							energy,
-							chimes_4btmp
-						);
-					}
-					else
-					{
-						/*
-						* Fallback for unsupported tabulation modes, excluded mappings,
-						* or non-triplet-star tables.
-						*/
+					CHIMES_PROF_BLOCK(PROF_4B_EVAL, {
+    if (reuse_ptr != nullptr && reuse_ptr->valid)
+    {
+        CHIMES_PROF_BLOCK(PROF_4B_EVAL_REUSE, {
+            chimes_calculator.compute_4B_from_triplet_reuse(
+                dist_4b,
+                dr_4b,
+                typ_idxs_4b,
+                *reuse_ptr,
+                force_4b,
+                stensor,
+                energy,
+                chimes_4btmp
+            );
+        });
+    }
+    else
+    {
 #ifdef TABULATION
-                        if (chimes_calculator.tabulate_4B_cp_direct)
-                        {
-                            chimes_calculator.compute_4B_cp_direct(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-                        else if (chimes_calculator.tabulate_4B_cp)
-                        {
-                            chimes_calculator.compute_4B_cp_tab(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-                        else if (chimes_calculator.tabulate_4B_svd4x2)
-                        {
-                            chimes_calculator.compute_4B_svd4x2_tab(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-                        else if (chimes_calculator.tabulate_4B_svd3x3)
-                        {
-                            chimes_calculator.compute_4B_svd3x3_tab(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-                        else if (chimes_calculator.tabulate_4B_coeff)
-                        {
-                            chimes_calculator.compute_4B_tab_coeff(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-                        else
+        if (chimes_calculator.tabulate_4B_cp_direct)
+        {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_CP_DIRECT, {
+                chimes_calculator.compute_4B_cp_direct(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+        else if (chimes_calculator.tabulate_4B_cp)
+        {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_CP_TAB, {
+                chimes_calculator.compute_4B_cp_tab(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+        else if (chimes_calculator.tabulate_4B_svd4x2)
+        {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_SVD4, {
+                chimes_calculator.compute_4B_svd4x2_tab(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+        else if (chimes_calculator.tabulate_4B_svd3x3)
+        {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_SVD3, {
+                chimes_calculator.compute_4B_svd3x3_tab(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+        else if (chimes_calculator.tabulate_4B_coeff)
+        {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_COEFF, {
+                chimes_calculator.compute_4B_tab_coeff(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+        else
 #endif
-                        {
-                            chimes_calculator.compute_4B(
-                                dist_4b,
-                                dr_4b,
-                                typ_idxs_4b,
-                                force_4b,
-                                stensor,
-                                energy,
-                                chimes_4btmp
-                            );
-                        }
-					}
+                {
+            CHIMES_PROF_BLOCK(PROF_4B_EVAL_DIRECT, {
+                chimes_calculator.compute_4B(
+                    dist_4b,
+                    dr_4b,
+                    typ_idxs_4b,
+                    force_4b,
+                    stensor,
+                    energy,
+                    chimes_4btmp
+                );
+            });
+        }
+    } // end else no reuse
+}); // end PROF_4B_EVAL
 
-					for (idx = 0; idx < CHDIM; idx++)
-					{
-						f[i][idx] += force_4b[0*CHDIM + idx];
-						f[j][idx] += force_4b[1*CHDIM + idx];
-						f[k][idx] += force_4b[2*CHDIM + idx];
-						f[l][idx] += force_4b[3*CHDIM + idx];
-					}
+					CHIMES_PROF_BLOCK(PROF_4B_FORCE_TALLY, {
+						for (idx = 0; idx < CHDIM; idx++)
+						{
+							f[i][idx] += force_4b[0*CHDIM + idx];
+							f[j][idx] += force_4b[1*CHDIM + idx];
+							f[k][idx] += force_4b[2*CHDIM + idx];
+							f[l][idx] += force_4b[3*CHDIM + idx];
+						}
 
-					if (vflag_atom)
-					{
-						atmidxlst[0][0] = i; atmidxlst[0][1] = j;
-						atmidxlst[1][0] = i; atmidxlst[1][1] = k;
-						atmidxlst[2][0] = i; atmidxlst[2][1] = l;
-						atmidxlst[3][0] = j; atmidxlst[3][1] = k;
-						atmidxlst[4][0] = j; atmidxlst[4][1] = l;
-						atmidxlst[5][0] = k; atmidxlst[5][1] = l;
-					}
+						if (vflag_atom)
+						{
+							atmidxlst[0][0] = i; atmidxlst[0][1] = j;
+							atmidxlst[1][0] = i; atmidxlst[1][1] = k;
+							atmidxlst[2][0] = i; atmidxlst[2][1] = l;
+							atmidxlst[3][0] = j; atmidxlst[3][1] = k;
+							atmidxlst[4][0] = j; atmidxlst[4][1] = l;
+							atmidxlst[5][0] = k; atmidxlst[5][1] = l;
+						}
 
-					if (evflag)
-						ev_tally_mb(4, 6, atmidxlst, energy, stensor);
+						if (evflag)
+							ev_tally_mb(4, 6, atmidxlst, energy, stensor);
+					});
 				}
 			}
 		}
-
-		if (vflag_fdotr) 
+if (vflag_fdotr)
+{
+    CHIMES_PROF_BLOCK(PROF_FDOTR, {
         virial_fdotr_compute();
+    });
+}
 
-	return;
+#ifdef CHIMES_PROFILE
+CHIMES_PROF_ADD(PROF_COMPUTE_TOTAL, MPI_Wtime() - chimes_compute_t0);
+
+if (update->ntimestep % CHIMES_PROFILE_EVERY == 0)
+{
+    chimes_profile_report(
+        world,
+        comm->me,
+        static_cast<long long>(update->ntimestep)
+    );
+}
+#endif
+
+return;
 }
 
 void PairCHIMES::set_chimes_type()
