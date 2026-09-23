@@ -48,6 +48,9 @@ elif [[ "$hosttype" == "JHU-ARCH" ]] ; then
     MPI=`which mpicxx`   
 elif [[ "$hosttype" == "UT-TACC" ]] ; then
     source modfiles/UT-TACC.mod	
+elif [[ "$hosttype" == "CONDA" ]] ; then
+    ICC=`which mpicxx`
+    MPI=`which mpicxx`
 else
     echo ""
     echo "ERROR: Unknown hosttype ($hosttype) specified"
@@ -55,6 +58,7 @@ else
 
     echo "Valid options are:"
     for i in `ls modfiles`; do echo "   ${i%.mod}"; done
+    echo "   CONDA"
     echo ""
     echo "Please run again with: export hosttype=<host type>; ./install.sh"
     echo "Or manually load modules and run with: ./install.sh"
