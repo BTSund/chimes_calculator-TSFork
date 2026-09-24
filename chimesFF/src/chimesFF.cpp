@@ -4365,8 +4365,6 @@ void chimesFF::compute_4B_tab_coeff(
     interpolateCoeff4B_3D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2);
 #elif defined(CHIMES_4B_TAB_4D)
     interpolateCoeff4B_4D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2, coeffD3);
-#else
-    #error "Must define CHIMES_4B_TAB_2D, CHIMES_4B_TAB_3D, or CHIMES_4B_TAB_4D"
 #endif
 
 #if defined(CHIMES_4B_TAB_2D)
