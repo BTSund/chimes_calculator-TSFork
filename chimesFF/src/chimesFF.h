@@ -252,9 +252,19 @@ public:
                         , vector<vector<double>> & clusters_4b, bool fingerprint
                     #endif
                     );
-        struct chimes4BTripletReuseTmp
+#ifdef CHIMES_SUBGRAPH_REUSE
+    // -------------------------------------------------------------------------
+    // Optional 4-body subgraph (shared-triplet) reuse.
+    //
+    // Compile with -DCHIMES_SUBGRAPH_REUSE (in BOTH chimesFF.cpp and
+    // pair_chimes.cpp) to enable. For a triplet (i,j,k) the triplet-side factor
+    // of the 4B energy is prepared once per fourth-atom type and then reused
+    // for every l that closes a quadruplet with that triplet.
+    // -------------------------------------------------------------------------
+    struct chimes4BTripletReuseTmp
     {
         bool valid = false;
+        bool triplet_out_of_range = false;   // set by prepare_4B_triplet_reuse() on a "no interaction" decline
         bool use_svd3x3 = false;
 #ifdef TABULATION
         bool use_cp_tab = false;
@@ -285,7 +295,7 @@ public:
         std::vector<double> X1;
         std::vector<double> X2;
 
-        // Sparse direct-polynomial partial contraction.
+        // Sparse direct-polynomial triplet contraction (untabulated reuse path).
         std::vector<int> p_il;
         std::vector<int> p_jl;
         std::vector<int> p_kl;
@@ -298,6 +308,7 @@ public:
         void clear()
         {
             valid = false;
+            triplet_out_of_range = false;
             use_svd3x3 = false;
 #ifdef TABULATION
             use_cp_tab = false;
@@ -349,7 +360,7 @@ public:
         double & energy,
         chimes4BTmp & tmp
     );
-    #ifdef TABULATION
+#ifdef TABULATION
     bool prepare_4B_cp_tab_triplet_reuse(
         const std::vector<double> & dx_trip_013,
         const std::vector<int> & typ_idxs,
@@ -398,6 +409,7 @@ public:
         double *D
     );
 #endif
+#endif // CHIMES_SUBGRAPH_REUSE
     void get_cutoff_2B(vector<vector<double> >  & cutoff_2b);   // Populates the 2b cutoffs
     
     double max_cutoff_2B(bool silent = false);    // Returns the largest 2B cutoff
@@ -551,100 +563,6 @@ public:
     );
 
     void compute_4B_svd4x2_tab(
-        const std::vector<double> & dx,
-        const std::vector<double> & dr,
-        const std::vector<int> & typ_idxs,
-        std::vector<double> & force,
-        std::vector<double> & stress,
-        double & energy,
-        chimes4BTmp & tmp,
-        std::vector<double> & force_scalar_in
-    );
-#endif
-
-#ifdef TABULATION
-    bool tabulate_4B_coeff = false;
-
-    // Canonical ordering metadata
-    std::vector<std::vector<std::string>> tab_4b_canonical_pair_types; // [quadidx][6]
-    std::vector<std::vector<int>> tab_4b_canon_to_param;               // [quadidx][6]
-
-    void build_runtime_canonical_maps_4B(
-        int quadidx,
-        const std::vector<int> & mapped_pair_idx,
-        const std::vector<double> & dx,
-        int *canon_to_runtime,
-        int *runtime_to_canon
-    );
-
-    // Contracted grid coordinates:
-    // [quadidx][contracted_dim_local][row]
-    std::vector<std::vector<std::vector<double>>> tab_r_4B;
-
-    // Flattened coefficient blocks:
-    // [quadidx][block][row*ncoeff + coeff]
-    std::vector<std::vector<std::vector<double>>> tab_coeffs_4B_blocks_flat;
-
-    // Metadata
-    std::vector<std::vector<int>> tab_4b_contracted_dims;
-    std::vector<std::vector<int>> tab_4b_retained_dims;
-    std::vector<std::vector<std::vector<int>>> tab_4b_coeff_powers;
-
-    std::vector<int> tab_4b_ncoeff;
-    std::vector<int> tab_4b_ngrid;
-    std::vector<int> tab_4b_ncontracted;
-    std::vector<int> tab_4b_nretained;
-
-    // Precomputed interpolation metadata
-    std::vector<std::vector<int>>    tab_4b_stride;
-    std::vector<std::vector<double>> tab_4b_r0;
-    std::vector<std::vector<double>> tab_4b_dr;
-    std::vector<std::vector<double>> tab_4b_invdr;
-#endif
-
-#ifdef TABULATION
-    void read_4B_coeff_meta(std::string meta_file, int quadidx);
-    void read_4B_coeff_tab (std::string data_file, int quadidx);
-
-
-    void interpolateCoeff4B_2D(
-        int quadidx,
-        const double *rquery,
-        double *coeffE,
-        double *coeffD0,
-        double *coeffD1
-    );
-
-    void interpolateCoeff4B_3D(
-        int quadidx,
-        const double *rquery,
-        double *coeffE,
-        double *coeffD0,
-        double *coeffD1,
-        double *coeffD2
-    );
-
-    void interpolateCoeff4B_4D(
-        int quadidx,
-        const double *rquery,
-        double *coeffE,
-        double *coeffD0,
-        double *coeffD1,
-        double *coeffD2,
-        double *coeffD3
-    );
-
-    void compute_4B_tab_coeff(
-        const std::vector<double> & dx,
-        const std::vector<double> & dr,
-        const std::vector<int> & typ_idxs,
-        std::vector<double> & force,
-        std::vector<double> & stress,
-        double & energy,
-        chimes4BTmp & tmp
-    );
-
-    void compute_4B_tab_coeff(
         const std::vector<double> & dx,
         const std::vector<double> & dr,
         const std::vector<int> & typ_idxs,
@@ -1194,27 +1112,3 @@ inline void chimesFF::set_cheby_polys(vector<double> &Tn, vector<double> &Tnd, d
 }
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

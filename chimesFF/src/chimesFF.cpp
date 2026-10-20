@@ -115,7 +115,7 @@ chimesFF::chimesFF()
 #ifdef TABULATION
     tabulate_2B = false;
     tabulate_3B = false;
-    tabulate_4B_coeff = false;
+    tabulate_4B_cp_direct = false;
     tabulate_4B_svd3x3 = false;
     tabulate_4B_svd4x2 = false;
     tabulate_4B_cp = false;
@@ -571,158 +571,6 @@ void chimesFF::read_4B_cp_direct_file(std::string factor_file, int quadidx)
     }
 }
 #endif
-#ifdef TABULATION
-void chimesFF::read_4B_coeff_meta(string meta_file, int quadidx)
-{
-    ifstream in(meta_file);
-    if (!in.is_open())
-    {
-        cout << "ERROR: Could not open 4B coefficient metadata file: " << meta_file << endl;
-        exit(0);
-    }
-
-    string line;
-    vector<string> items;
-
-    int ncoeff = -1;
-    int ncontracted = -1;
-    int nretained = -1;
-    vector<int> contracted_dims;
-    vector<int> retained_dims;
-    vector<vector<int>> coeff_powers;
-
-    vector<string> canonical_pair_types;
-    vector<int> canon_to_param;
-
-    bool reading_coeff_powers = false;
-
-    while (getline(in, line))
-    {
-        if (line.size() == 0) continue;
-
-        int n = split_line(line, items);
-        if (n == 0) continue;
-
-        if (items[0] == "ncontracted")
-            ncontracted = stoi(items[1]);
-        else if (items[0] == "contracted_dims")
-        {
-            contracted_dims.clear();
-            for (int i=1; i<n; i++) contracted_dims.push_back(stoi(items[i]));
-        }
-        else if (items[0] == "nretained")
-            nretained = stoi(items[1]);
-        else if (items[0] == "retained_dims")
-        {
-            retained_dims.clear();
-            for (int i=1; i<n; i++) retained_dims.push_back(stoi(items[i]));
-        }
-        else if (items[0] == "ncoeff")
-            ncoeff = stoi(items[1]);
-        else if (items[0] == "canonical_pair_types")
-        {
-            canonical_pair_types.clear();
-            for (int i=1; i<n; i++) canonical_pair_types.push_back(items[i]);
-        }
-        else if (items[0] == "canon_to_param")
-        {
-            canon_to_param.clear();
-            for (int i=1; i<n; i++) canon_to_param.push_back(stoi(items[i]));
-        }
-        else if (items[0] == "coeff_powers")
-            reading_coeff_powers = true;
-        else if (reading_coeff_powers)
-        {
-            vector<int> p;
-            for (int i=0; i<n; i++) p.push_back(stoi(items[i]));
-            coeff_powers.push_back(p);
-        }
-    }
-
-    in.close();
-
-    if (ncoeff < 0 || ncontracted < 0 || nretained < 0)
-    {
-        cout << "ERROR: Incomplete 4B metadata in " << meta_file << endl;
-        exit(0);
-    }
-
-    if ((int)contracted_dims.size() != ncontracted)
-    {
-        cout << "ERROR: contracted_dims size mismatch in " << meta_file << endl;
-        exit(0);
-    }
-
-    if ((int)retained_dims.size() != nretained)
-    {
-        cout << "ERROR: retained_dims size mismatch in " << meta_file << endl;
-        exit(0);
-    }
-
-    if ((int)coeff_powers.size() != ncoeff)
-    {
-        cout << "ERROR: coeff_powers count mismatch in " << meta_file << endl;
-        exit(0);
-    }
-
-    for (int i=0; i<ncoeff; i++)
-    {
-        if ((int)coeff_powers[i].size() != nretained)
-        {
-            cout << "ERROR: coeff_powers tuple length mismatch in " << meta_file << endl;
-            exit(0);
-        }
-    }
-
-    if (!canonical_pair_types.empty() && (int)canonical_pair_types.size() != 6)
-    {
-        cout << "ERROR: canonical_pair_types must have length 6 in " << meta_file << endl;
-        exit(0);
-    }
-
-    if (!canon_to_param.empty() && (int)canon_to_param.size() != 6)
-    {
-        cout << "ERROR: canon_to_param must have length 6 in " << meta_file << endl;
-        exit(0);
-    }
-
-    if ((int)tab_4b_contracted_dims.size() <= quadidx)
-    {
-        tab_4b_contracted_dims.resize(quadidx+1);
-        tab_4b_retained_dims.resize(quadidx+1);
-        tab_4b_coeff_powers.resize(quadidx+1);
-        tab_4b_ncoeff.resize(quadidx+1);
-        tab_4b_ngrid.resize(quadidx+1);
-        tab_4b_ncontracted.resize(quadidx+1);
-        tab_4b_nretained.resize(quadidx+1);
-        tab_4b_stride.resize(quadidx+1);
-        tab_4b_r0.resize(quadidx+1);
-        tab_4b_dr.resize(quadidx+1);
-        tab_4b_invdr.resize(quadidx+1);
-
-        tab_4b_canonical_pair_types.resize(quadidx+1);
-        tab_4b_canon_to_param.resize(quadidx+1);
-    }
-
-    tab_4b_contracted_dims[quadidx] = contracted_dims;
-    tab_4b_retained_dims[quadidx]   = retained_dims;
-    tab_4b_coeff_powers[quadidx]    = coeff_powers;
-    tab_4b_ncoeff[quadidx]          = ncoeff;
-    tab_4b_ncontracted[quadidx]     = ncontracted;
-    tab_4b_nretained[quadidx]       = nretained;
-    tab_4b_canonical_pair_types[quadidx] = canonical_pair_types;
-    tab_4b_canon_to_param[quadidx]       = canon_to_param;
-
-    if (rank == 0)
-    {
-        cout << "chimesFF: Read 4B coeff metadata for quad type " << quadidx << endl;
-        cout << "chimesFF: \tncontracted: " << ncontracted << endl;
-        cout << "chimesFF: \tnretained:   " << nretained << endl;
-        cout << "chimesFF: \tncoeff:      " << ncoeff << endl;
-    }
-}
-#endif
-
 #ifdef TABULATION
 void chimesFF::read_4B_svd4x2_meta(string meta_file, int quadidx)
 {
@@ -1573,170 +1421,6 @@ void chimesFF::compute_4B_svd3x3_tab(
     compute_4B_svd3x3_tab(
         dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
     );
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::build_runtime_canonical_maps_4B(
-    int quadidx,
-    const std::vector<int> & mapped_pair_idx,
-    const std::vector<double> & dx,
-    int *canon_to_runtime,
-    int *runtime_to_canon
-)
-{
-    int param_to_runtime[6];
-    for (int r = 0; r < 6; r++)
-        param_to_runtime[mapped_pair_idx[r]] = r;
-
-    for (int c = 0; c < 6; c++)
-    {
-        int pslot;
-        if ((int)tab_4b_canon_to_param[quadidx].size() == 6)
-            pslot = tab_4b_canon_to_param[quadidx][c];
-        else
-            pslot = c;
-
-        int rslot = param_to_runtime[pslot];
-        canon_to_runtime[c] = rslot;
-        runtime_to_canon[rslot] = c;
-    }
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::read_4B_coeff_tab(string data_file, int quadidx)
-{
-    ifstream in(data_file);
-    if (!in.is_open())
-    {
-        cout << "ERROR: Could not open 4B coefficient table file: " << data_file << endl;
-        exit(0);
-    }
-
-    if ((int)tab_4b_ncoeff.size() <= quadidx || tab_4b_ncoeff[quadidx] <= 0)
-    {
-        cout << "ERROR: Must read 4B coeff metadata before reading coefficient table for quad type "
-             << quadidx << endl;
-        exit(0);
-    }
-
-    int ncoeff = tab_4b_ncoeff[quadidx];
-    int ncontracted = tab_4b_ncontracted[quadidx];
-    int nblocks = 1 + ncontracted;
-
-    string line;
-    vector<string> items;
-
-    line = get_next_line(in);
-    int nrows = stoi(line);
-
-    if ((int)tab_r_4B.size() <= quadidx)
-    {
-        tab_r_4B.resize(quadidx+1);
-        tab_coeffs_4B_blocks_flat.resize(quadidx+1);
-    }
-
-    tab_r_4B[quadidx].resize(ncontracted);
-    tab_coeffs_4B_blocks_flat[quadidx].resize(nblocks);
-
-    for (int d=0; d<ncontracted; d++)
-        tab_r_4B[quadidx][d].reserve(nrows);
-
-    for (int b=0; b<nblocks; b++)
-        tab_coeffs_4B_blocks_flat[quadidx][b].resize((size_t)nrows * ncoeff);
-
-    for (int i=0; i<nrows; i++)
-    {
-        line = get_next_line(in);
-        int n = split_line(line, items);
-
-        int expected = ncontracted + nblocks*ncoeff;
-        if (n != expected)
-        {
-            cout << "ERROR: Expected " << expected
-                 << " entries in 4B coeff row, got " << n << endl;
-            cout << "Line: " << line << endl;
-            exit(0);
-        }
-
-        for (int d=0; d<ncontracted; d++)
-            tab_r_4B[quadidx][d].push_back(stod(items[d]));
-
-        int offset = ncontracted;
-        for (int b=0; b<nblocks; b++)
-        {
-            for (int c=0; c<ncoeff; c++)
-            {
-                tab_coeffs_4B_blocks_flat[quadidx][b][(size_t)i*ncoeff + c] =
-                    stod(items[offset + b*ncoeff + c]);
-            }
-        }
-    }
-
-    in.close();
-
-    int ngrid = 0;
-    if (ncontracted == 2) ngrid = round(sqrt((double)nrows));
-    else if (ncontracted == 3) ngrid = round(cbrt((double)nrows));
-    else if (ncontracted == 4) ngrid = round(sqrt(sqrt((double)nrows)));
-    else
-    {
-        cout << "ERROR: read_4B_coeff_tab supports only 2/3/4 contracted dims" << endl;
-        exit(0);
-    }
-
-    int check = 1;
-    for (int i=0; i<ncontracted; i++) check *= ngrid;
-    if (check != nrows)
-    {
-        cout << "ERROR: 4B coeff table row count incompatible with uniform grid: " << nrows << endl;
-        exit(0);
-    }
-
-    tab_4b_ngrid[quadidx] = ngrid;
-
-    tab_4b_stride[quadidx].resize(ncontracted);
-    tab_4b_r0[quadidx].resize(ncontracted);
-    tab_4b_dr[quadidx].resize(ncontracted);
-    tab_4b_invdr[quadidx].resize(ncontracted);
-
-    if (ncontracted == 2)
-    {
-        tab_4b_stride[quadidx][0] = ngrid;
-        tab_4b_stride[quadidx][1] = 1;
-    }
-    else if (ncontracted == 3)
-    {
-        tab_4b_stride[quadidx][0] = ngrid*ngrid;
-        tab_4b_stride[quadidx][1] = ngrid;
-        tab_4b_stride[quadidx][2] = 1;
-    }
-    else if (ncontracted == 4)
-    {
-        tab_4b_stride[quadidx][0] = ngrid*ngrid*ngrid;
-        tab_4b_stride[quadidx][1] = ngrid*ngrid;
-        tab_4b_stride[quadidx][2] = ngrid;
-        tab_4b_stride[quadidx][3] = 1;
-    }
-
-    for (int d=0; d<ncontracted; d++)
-    {
-        int sd = tab_4b_stride[quadidx][d];
-        tab_4b_r0[quadidx][d] = tab_r_4B[quadidx][d][0];
-        tab_4b_dr[quadidx][d] = tab_r_4B[quadidx][d][sd] - tab_r_4B[quadidx][d][0];
-        tab_4b_invdr[quadidx][d] = 1.0 / tab_4b_dr[quadidx][d];
-    }
-
-    if (rank == 0)
-    {
-        cout << "chimesFF: Read 4B coeff table for quad type " << quadidx << endl;
-        cout << "chimesFF: \tnrows        = " << nrows << endl;
-        cout << "chimesFF: \tngrid        = " << ngrid << endl;
-        cout << "chimesFF: \tncoeff       = " << ncoeff << endl;
-        cout << "chimesFF: \tncontracted  = " << ncontracted << endl;
-        cout << "chimesFF: \tnblocks      = " << nblocks << endl;
-    }
 }
 #endif
 
@@ -2618,41 +2302,17 @@ void chimesFF::read_parameters(string paramfile)
             continue;
         }
 #endif
-    #ifdef TABULATION
+        // The contracted-coefficient ("partial") 4B tabulation has been removed.
         if(line.find("4B COEFF TABLES:") != string::npos)
         {
-            split_line(line, tmp_str_items);
-
-            int ntab = stoi(tmp_str_items[3]);
-
             if (rank == 0)
-                cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
-
-            tabulate_4B_coeff = true;
-
-            for (int t=0; t<ntab; t++)
             {
-                line = get_next_line(param_file);
-                split_line(line, tmp_str_items);
-
-                if (tmp_str_items.size() != 3)
-                {
-                    cout << "ERROR: Expected line format:" << endl;
-                    cout << "       <quadidx> <datafile> <metafile>" << endl;
-                    cout << "Line: " << line << endl;
-                    exit(0);
-                }
-
-                int quadidx = stoi(tmp_str_items[0]);
-                string datafile = param_file_path + "/" + tmp_str_items[1];
-                string metafile = param_file_path + "/" + tmp_str_items[2];
-
-                read_4B_coeff_meta(metafile, quadidx);
-                read_4B_coeff_tab (datafile, quadidx);
+                cout << "chimesFF: ERROR: \"4B COEFF TABLES:\" (partial 4B tabulation) is no longer supported." << endl;
+                cout << "chimesFF:        Use 4B CP DIRECT, 4B CP TABLES, 4B SVD3X3 TABLES, 4B SVD4X2 TABLES," << endl;
+                cout << "chimesFF:        or the untabulated polynomial parameters instead." << endl;
             }
-            continue;
+            exit(0);
         }
-    #endif
 
 
 #ifdef TABULATION
@@ -4239,594 +3899,6 @@ void chimesFF::compute_4B_svd3x3_tab(
 }
 #endif
 
-#ifdef TABULATION
-void chimesFF::compute_4B_tab_coeff(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
-{
-    vector<double> dummy_force_scalar(6);
-    compute_4B_tab_coeff(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::compute_4B_tab_coeff(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    vector<double> & force_scalar_in
-)
-{
-    const int npairs = 6;
-
-    vector<double> &Tn_ij   = tmp.Tn_ij;
-    vector<double> &Tn_ik   = tmp.Tn_ik;
-    vector<double> &Tn_il   = tmp.Tn_il;
-    vector<double> &Tn_jk   = tmp.Tn_jk;
-    vector<double> &Tn_jl   = tmp.Tn_jl;
-    vector<double> &Tn_kl   = tmp.Tn_kl;
-
-    vector<double> &Tnd_ij  = tmp.Tnd_ij;
-    vector<double> &Tnd_ik  = tmp.Tnd_ik;
-    vector<double> &Tnd_il  = tmp.Tnd_il;
-    vector<double> &Tnd_jk  = tmp.Tnd_jk;
-    vector<double> &Tnd_jl  = tmp.Tnd_jl;
-    vector<double> &Tnd_kl  = tmp.Tnd_kl;
-
-    int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
-            + typ_idxs[1]*natmtyps*natmtyps
-            + typ_idxs[2]*natmtyps
-            + typ_idxs[3];
-
-    int quadidx = atom_int_quad_map[idx];
-    if (quadidx < 0) return;
-
-    vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
-
-    for (int i=0; i<npairs; i++)
-        if (dx[i] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]])
-            return;
-
-    int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
-    int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
-    int pair_type_3 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[3] ];
-    int pair_type_4 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ];
-    int pair_type_5 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[3] ];
-    int pair_type_6 = atom_int_pair_map[ typ_idxs[2]*natmtyps + typ_idxs[3] ];
-
-    set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[0]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]], poly_orders[2]);
-    set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]], poly_orders[2]);
-    set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[2]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[2]], poly_orders[2]);
-    set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]], poly_orders[2]);
-    set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[4]], poly_orders[2]);
-    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[5]], poly_orders[2]);
-
-    array<double, npairs> fcut, fcutderiv;
-    for (int i=0; i<npairs; i++)
-        get_fcut(dx[i], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]], fcut[i], fcutderiv[i]);
-
-    const vector<int> & contracted_dims = tab_4b_contracted_dims[quadidx];
-    const vector<int> & retained_dims   = tab_4b_retained_dims[quadidx];
-    const vector<vector<int>> & coeff_powers = tab_4b_coeff_powers[quadidx];
-
-    int ncontracted = tab_4b_ncontracted[quadidx];
-    int nretained   = tab_4b_nretained[quadidx];
-    int ncoeff      = tab_4b_ncoeff[quadidx];
-
-    vector<double>* Tptr[6]  = {&Tn_ij, &Tn_ik, &Tn_il, &Tn_jk, &Tn_jl, &Tn_kl};
-    vector<double>* Tdptr[6] = {&Tnd_ij,&Tnd_ik,&Tnd_il,&Tnd_jk,&Tnd_jl,&Tnd_kl};
-
-    // Build canonical<->runtime maps
-    int canon_to_runtime[6];
-    int runtime_to_canon[6];
-    build_runtime_canonical_maps_4B(quadidx, mapped_pair_idx, dx, canon_to_runtime, runtime_to_canon);
-
-    double dE_pair[6] = {0,0,0,0,0,0};
-
-    double *coeffE  = new double[ncoeff];
-    double *coeffD0 = new double[ncoeff];
-    double *coeffD1 = new double[ncoeff];
-    double *coeffD2 = (ncontracted >= 3) ? new double[ncoeff] : nullptr;
-    double *coeffD3 = (ncontracted >= 4) ? new double[ncoeff] : nullptr;
-
-    double rquery[4] = {0.0,0.0,0.0,0.0};
-    for (int i=0; i<ncontracted; i++)
-    {
-        int cslot = contracted_dims[i];
-        int rslot = canon_to_runtime[cslot];
-        rquery[i] = dx[rslot];
-    }
-
-#if defined(CHIMES_4B_TAB_2D)
-    interpolateCoeff4B_2D(quadidx, rquery, coeffE, coeffD0, coeffD1);
-#elif defined(CHIMES_4B_TAB_3D)
-    interpolateCoeff4B_3D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2);
-#elif defined(CHIMES_4B_TAB_4D)
-    interpolateCoeff4B_4D(quadidx, rquery, coeffE, coeffD0, coeffD1, coeffD2, coeffD3);
-#endif
-
-#if defined(CHIMES_4B_TAB_2D)
-    if (ncontracted != 2 || nretained != 4)
-    {
-        cout << "ERROR: CHIMES_4B_TAB_2D build expects ncontracted=2 nretained=4" << endl;
-        exit(0);
-    }
-
-    int c0 = canon_to_runtime[contracted_dims[0]];
-    int c1 = canon_to_runtime[contracted_dims[1]];
-
-    int r0 = canon_to_runtime[retained_dims[0]];
-    int r1 = canon_to_runtime[retained_dims[1]];
-    int r2 = canon_to_runtime[retained_dims[2]];
-    int r3 = canon_to_runtime[retained_dims[3]];
-
-    for (int q=0; q<ncoeff; q++)
-    {
-        int p0 = coeff_powers[q][0];
-        int p1 = coeff_powers[q][1];
-        int p2 = coeff_powers[q][2];
-        int p3 = coeff_powers[q][3];
-
-        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
-        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
-        double A2 = fcut[r2] * (*(Tptr[r2]))[p2];
-        double A3 = fcut[r3] * (*(Tptr[r3]))[p3];
-
-        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
-        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
-        double B2 = fcutderiv[r2] * (*(Tptr[r2]))[p2] + fcut[r2] * (*(Tdptr[r2]))[p2];
-        double B3 = fcutderiv[r3] * (*(Tptr[r3]))[p3] + fcut[r3] * (*(Tdptr[r3]))[p3];
-
-        double retained_prod = A0*A1*A2*A3;
-
-        energy      += coeffE[q]  * retained_prod;
-        dE_pair[c0] += coeffD0[q] * retained_prod;
-        dE_pair[c1] += coeffD1[q] * retained_prod;
-
-        dE_pair[r0] += coeffE[q] * B0*A1*A2*A3;
-        dE_pair[r1] += coeffE[q] * A0*B1*A2*A3;
-        dE_pair[r2] += coeffE[q] * A0*A1*B2*A3;
-        dE_pair[r3] += coeffE[q] * A0*A1*A2*B3;
-    }
-
-#elif defined(CHIMES_4B_TAB_3D)
-    if (ncontracted != 3 || nretained != 3)
-    {
-        cout << "ERROR: CHIMES_4B_TAB_3D build expects ncontracted=3 nretained=3" << endl;
-        exit(0);
-    }
-
-    int c0 = canon_to_runtime[contracted_dims[0]];
-    int c1 = canon_to_runtime[contracted_dims[1]];
-    int c2 = canon_to_runtime[contracted_dims[2]];
-
-    int r0 = canon_to_runtime[retained_dims[0]];
-    int r1 = canon_to_runtime[retained_dims[1]];
-    int r2 = canon_to_runtime[retained_dims[2]];
-
-    for (int q=0; q<ncoeff; q++)
-    {
-        int p0 = coeff_powers[q][0];
-        int p1 = coeff_powers[q][1];
-        int p2 = coeff_powers[q][2];
-
-        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
-        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
-        double A2 = fcut[r2] * (*(Tptr[r2]))[p2];
-
-        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
-        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
-        double B2 = fcutderiv[r2] * (*(Tptr[r2]))[p2] + fcut[r2] * (*(Tdptr[r2]))[p2];
-
-        double retained_prod = A0*A1*A2;
-
-        energy      += coeffE[q]  * retained_prod;
-        dE_pair[c0] += coeffD0[q] * retained_prod;
-        dE_pair[c1] += coeffD1[q] * retained_prod;
-        dE_pair[c2] += coeffD2[q] * retained_prod;
-
-        dE_pair[r0] += coeffE[q] * B0*A1*A2;
-        dE_pair[r1] += coeffE[q] * A0*B1*A2;
-        dE_pair[r2] += coeffE[q] * A0*A1*B2;
-    }
-
-#elif defined(CHIMES_4B_TAB_4D)
-    if (ncontracted != 4 || nretained != 2)
-    {
-        cout << "ERROR: CHIMES_4B_TAB_4D build expects ncontracted=4 nretained=2" << endl;
-        exit(0);
-    }
-
-    int c0 = canon_to_runtime[contracted_dims[0]];
-    int c1 = canon_to_runtime[contracted_dims[1]];
-    int c2 = canon_to_runtime[contracted_dims[2]];
-    int c3 = canon_to_runtime[contracted_dims[3]];
-
-    int r0 = canon_to_runtime[retained_dims[0]];
-    int r1 = canon_to_runtime[retained_dims[1]];
-
-    for (int q=0; q<ncoeff; q++)
-    {
-        int p0 = coeff_powers[q][0];
-        int p1 = coeff_powers[q][1];
-
-        double A0 = fcut[r0] * (*(Tptr[r0]))[p0];
-        double A1 = fcut[r1] * (*(Tptr[r1]))[p1];
-
-        double B0 = fcutderiv[r0] * (*(Tptr[r0]))[p0] + fcut[r0] * (*(Tdptr[r0]))[p0];
-        double B1 = fcutderiv[r1] * (*(Tptr[r1]))[p1] + fcut[r1] * (*(Tdptr[r1]))[p1];
-
-        double retained_prod = A0*A1;
-
-        energy      += coeffE[q]  * retained_prod;
-        dE_pair[c0] += coeffD0[q] * retained_prod;
-        dE_pair[c1] += coeffD1[q] * retained_prod;
-        dE_pair[c2] += coeffD2[q] * retained_prod;
-        dE_pair[c3] += coeffD3[q] * retained_prod;
-
-        dE_pair[r0] += coeffE[q] * B0*A1;
-        dE_pair[r1] += coeffE[q] * A0*B1;
-    }
-#endif
-
-    delete [] coeffE;
-    delete [] coeffD0;
-    delete [] coeffD1;
-    if (coeffD2) delete [] coeffD2;
-    if (coeffD3) delete [] coeffD3;
-
-    double force_scalar[6];
-    for (int p=0; p<6; p++)
-        force_scalar[p] = dE_pair[p] / dx[p];
-
-#ifdef USE_DISTANCE_TENSOR
-    double dr2[CHDIM*CHDIM*npairs*npairs];
-    init_distance_tensor(dr2, dr, npairs);
-#endif
-
-    // ij
-    force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
-    force[0*CHDIM+1] += force_scalar[0] * dr[0*CHDIM+1];
-    force[0*CHDIM+2] += force_scalar[0] * dr[0*CHDIM+2];
-    force[1*CHDIM+0] -= force_scalar[0] * dr[0*CHDIM+0];
-    force[1*CHDIM+1] -= force_scalar[0] * dr[0*CHDIM+1];
-    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];
-
-    // ik
-    force[0*CHDIM+0] += force_scalar[1] * dr[1*CHDIM+0];
-    force[0*CHDIM+1] += force_scalar[1] * dr[1*CHDIM+1];
-    force[0*CHDIM+2] += force_scalar[1] * dr[1*CHDIM+2];
-    force[2*CHDIM+0] -= force_scalar[1] * dr[1*CHDIM+0];
-    force[2*CHDIM+1] -= force_scalar[1] * dr[1*CHDIM+1];
-    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];
-
-    // il
-    force[0*CHDIM+0] += force_scalar[2] * dr[2*CHDIM+0];
-    force[0*CHDIM+1] += force_scalar[2] * dr[2*CHDIM+1];
-    force[0*CHDIM+2] += force_scalar[2] * dr[2*CHDIM+2];
-    force[3*CHDIM+0] -= force_scalar[2] * dr[2*CHDIM+0];
-    force[3*CHDIM+1] -= force_scalar[2] * dr[2*CHDIM+1];
-    force[3*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];
-
-    // jk
-    force[1*CHDIM+0] += force_scalar[3] * dr[3*CHDIM+0];
-    force[1*CHDIM+1] += force_scalar[3] * dr[3*CHDIM+1];
-    force[1*CHDIM+2] += force_scalar[3] * dr[3*CHDIM+2];
-    force[2*CHDIM+0] -= force_scalar[3] * dr[3*CHDIM+0];
-    force[2*CHDIM+1] -= force_scalar[3] * dr[3*CHDIM+1];
-    force[2*CHDIM+2] -= force_scalar[3] * dr[3*CHDIM+2];
-
-    // jl
-    force[1*CHDIM+0] += force_scalar[4] * dr[4*CHDIM+0];
-    force[1*CHDIM+1] += force_scalar[4] * dr[4*CHDIM+1];
-    force[1*CHDIM+2] += force_scalar[4] * dr[4*CHDIM+2];
-    force[3*CHDIM+0] -= force_scalar[4] * dr[4*CHDIM+0];
-    force[3*CHDIM+1] -= force_scalar[4] * dr[4*CHDIM+1];
-    force[3*CHDIM+2] -= force_scalar[4] * dr[4*CHDIM+2];
-
-    // kl
-    force[2*CHDIM+0] += force_scalar[5] * dr[5*CHDIM+0];
-    force[2*CHDIM+1] += force_scalar[5] * dr[5*CHDIM+1];
-    force[2*CHDIM+2] += force_scalar[5] * dr[5*CHDIM+2];
-    force[3*CHDIM+0] -= force_scalar[5] * dr[5*CHDIM+0];
-    force[3*CHDIM+1] -= force_scalar[5] * dr[5*CHDIM+1];
-    force[3*CHDIM+2] -= force_scalar[5] * dr[5*CHDIM+2];
-
-#ifdef USE_DISTANCE_TENSOR
-    for (int p=0; p<6; p++)
-    {
-        stress[0] -= force_scalar[p] * dr2_4B(dr2,p,0,p,0);
-        stress[1] -= force_scalar[p] * dr2_4B(dr2,p,0,p,1);
-        stress[2] -= force_scalar[p] * dr2_4B(dr2,p,0,p,2);
-        stress[3] -= force_scalar[p] * dr2_4B(dr2,p,1,p,1);
-        stress[4] -= force_scalar[p] * dr2_4B(dr2,p,1,p,2);
-        stress[5] -= force_scalar[p] * dr2_4B(dr2,p,2,p,2);
-    }
-#else
-    for (int p=0; p<6; p++)
-    {
-        stress[0] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+0];
-        stress[1] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+1];
-        stress[2] -= force_scalar[p] * dr[p*CHDIM+0] * dr[p*CHDIM+2];
-        stress[3] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+1];
-        stress[4] -= force_scalar[p] * dr[p*CHDIM+1] * dr[p*CHDIM+2];
-        stress[5] -= force_scalar[p] * dr[p*CHDIM+2] * dr[p*CHDIM+2];
-    }
-#endif
-
-    for (int i=0; i<6; i++)
-        force_scalar_in[i] = force_scalar[i];
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::interpolateCoeff4B_2D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1
-)
-{
-    const int ncoeff = tab_4b_ncoeff[quadidx];
-    const int stride0 = tab_4b_stride[quadidx][0];
-    const int ngrid = tab_4b_ngrid[quadidx];
-
-    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
-    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
-
-    if (i0 < 0) i0 = 0;
-    if (i1 < 0) i1 = 0;
-    if (i0 > ngrid-2) i0 = ngrid-2;
-    if (i1 > ngrid-2) i1 = ngrid-2;
-
-    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
-    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
-
-    double w00 = (1.0-t0)*(1.0-t1);
-    double w01 = (1.0-t0)*t1;
-    double w10 = t0*(1.0-t1);
-    double w11 = t0*t1;
-
-    int idx00 = i0*stride0 + i1;
-    int idx01 = idx00 + 1;
-    int idx10 = idx00 + stride0;
-    int idx11 = idx10 + 1;
-
-    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
-    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
-    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
-
-    size_t o00 = (size_t)idx00 * ncoeff;
-    size_t o01 = (size_t)idx01 * ncoeff;
-    size_t o10 = (size_t)idx10 * ncoeff;
-    size_t o11 = (size_t)idx11 * ncoeff;
-
-    for (int c=0; c<ncoeff; c++)
-    {
-        coeffE[c]  = w00*E [o00+c] + w01*E [o01+c] + w10*E [o10+c] + w11*E [o11+c];
-        coeffD0[c] = w00*D0[o00+c] + w01*D0[o01+c] + w10*D0[o10+c] + w11*D0[o11+c];
-        coeffD1[c] = w00*D1[o00+c] + w01*D1[o01+c] + w10*D1[o10+c] + w11*D1[o11+c];
-    }
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::interpolateCoeff4B_3D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1,
-    double *coeffD2
-)
-{
-    const int ncoeff = tab_4b_ncoeff[quadidx];
-    const int stride0 = tab_4b_stride[quadidx][0];
-    const int stride1 = tab_4b_stride[quadidx][1];
-    const int ngrid = tab_4b_ngrid[quadidx];
-
-    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
-    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
-    int i2 = (int) ((rquery[2] - tab_4b_r0[quadidx][2]) * tab_4b_invdr[quadidx][2]);
-
-    if (i0 < 0) i0 = 0;
-    if (i1 < 0) i1 = 0;
-    if (i2 < 0) i2 = 0;
-    if (i0 > ngrid-2) i0 = ngrid-2;
-    if (i1 > ngrid-2) i1 = ngrid-2;
-    if (i2 > ngrid-2) i2 = ngrid-2;
-
-    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
-    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
-    double t2 = (rquery[2] - (tab_4b_r0[quadidx][2] + i2*tab_4b_dr[quadidx][2])) * tab_4b_invdr[quadidx][2];
-
-    double a0 = 1.0-t0, a1 = 1.0-t1, a2 = 1.0-t2;
-    double b0 = t0,     b1 = t1,     b2 = t2;
-
-    int idx000 = i0*stride0 + i1*stride1 + i2;
-    int idx001 = idx000 + 1;
-    int idx010 = idx000 + stride1;
-    int idx011 = idx010 + 1;
-    int idx100 = idx000 + stride0;
-    int idx101 = idx100 + 1;
-    int idx110 = idx100 + stride1;
-    int idx111 = idx110 + 1;
-
-    double w000 = a0*a1*a2;
-    double w001 = a0*a1*b2;
-    double w010 = a0*b1*a2;
-    double w011 = a0*b1*b2;
-    double w100 = b0*a1*a2;
-    double w101 = b0*a1*b2;
-    double w110 = b0*b1*a2;
-    double w111 = b0*b1*b2;
-
-    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
-    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
-    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
-    const vector<double> & D2 = tab_coeffs_4B_blocks_flat[quadidx][3];
-
-    size_t o000 = (size_t)idx000*ncoeff;
-    size_t o001 = (size_t)idx001*ncoeff;
-    size_t o010 = (size_t)idx010*ncoeff;
-    size_t o011 = (size_t)idx011*ncoeff;
-    size_t o100 = (size_t)idx100*ncoeff;
-    size_t o101 = (size_t)idx101*ncoeff;
-    size_t o110 = (size_t)idx110*ncoeff;
-    size_t o111 = (size_t)idx111*ncoeff;
-
-    for (int c=0; c<ncoeff; c++)
-    {
-        coeffE[c] =
-            w000*E[o000+c] + w001*E[o001+c] + w010*E[o010+c] + w011*E[o011+c] +
-            w100*E[o100+c] + w101*E[o101+c] + w110*E[o110+c] + w111*E[o111+c];
-
-        coeffD0[c] =
-            w000*D0[o000+c] + w001*D0[o001+c] + w010*D0[o010+c] + w011*D0[o011+c] +
-            w100*D0[o100+c] + w101*D0[o101+c] + w110*D0[o110+c] + w111*D0[o111+c];
-
-        coeffD1[c] =
-            w000*D1[o000+c] + w001*D1[o001+c] + w010*D1[o010+c] + w011*D1[o011+c] +
-            w100*D1[o100+c] + w101*D1[o101+c] + w110*D1[o110+c] + w111*D1[o111+c];
-
-        coeffD2[c] =
-            w000*D2[o000+c] + w001*D2[o001+c] + w010*D2[o010+c] + w011*D2[o011+c] +
-            w100*D2[o100+c] + w101*D2[o101+c] + w110*D2[o110+c] + w111*D2[o111+c];
-    }
-}
-#endif
-
-#ifdef TABULATION
-void chimesFF::interpolateCoeff4B_4D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1,
-    double *coeffD2,
-    double *coeffD3
-)
-{
-    const int ncoeff = tab_4b_ncoeff[quadidx];
-    const int stride0 = tab_4b_stride[quadidx][0];
-    const int stride1 = tab_4b_stride[quadidx][1];
-    const int stride2 = tab_4b_stride[quadidx][2];
-    const int ngrid = tab_4b_ngrid[quadidx];
-
-    int i0 = (int) ((rquery[0] - tab_4b_r0[quadidx][0]) * tab_4b_invdr[quadidx][0]);
-    int i1 = (int) ((rquery[1] - tab_4b_r0[quadidx][1]) * tab_4b_invdr[quadidx][1]);
-    int i2 = (int) ((rquery[2] - tab_4b_r0[quadidx][2]) * tab_4b_invdr[quadidx][2]);
-    int i3 = (int) ((rquery[3] - tab_4b_r0[quadidx][3]) * tab_4b_invdr[quadidx][3]);
-
-    if (i0 < 0) i0 = 0;
-    if (i1 < 0) i1 = 0;
-    if (i2 < 0) i2 = 0;
-    if (i3 < 0) i3 = 0;
-    if (i0 > ngrid-2) i0 = ngrid-2;
-    if (i1 > ngrid-2) i1 = ngrid-2;
-    if (i2 > ngrid-2) i2 = ngrid-2;
-    if (i3 > ngrid-2) i3 = ngrid-2;
-
-    double t0 = (rquery[0] - (tab_4b_r0[quadidx][0] + i0*tab_4b_dr[quadidx][0])) * tab_4b_invdr[quadidx][0];
-    double t1 = (rquery[1] - (tab_4b_r0[quadidx][1] + i1*tab_4b_dr[quadidx][1])) * tab_4b_invdr[quadidx][1];
-    double t2 = (rquery[2] - (tab_4b_r0[quadidx][2] + i2*tab_4b_dr[quadidx][2])) * tab_4b_invdr[quadidx][2];
-    double t3 = (rquery[3] - (tab_4b_r0[quadidx][3] + i3*tab_4b_dr[quadidx][3])) * tab_4b_invdr[quadidx][3];
-
-    double a0 = 1.0-t0, a1 = 1.0-t1, a2 = 1.0-t2, a3 = 1.0-t3;
-    double b0 = t0,     b1 = t1,     b2 = t2,     b3 = t3;
-
-    int base = i0*stride0 + i1*stride1 + i2*stride2 + i3;
-
-    int idx[16];
-    idx[0]  = base;
-    idx[1]  = base + 1;
-    idx[2]  = base + stride2;
-    idx[3]  = idx[2] + 1;
-    idx[4]  = base + stride1;
-    idx[5]  = idx[4] + 1;
-    idx[6]  = idx[4] + stride2;
-    idx[7]  = idx[6] + 1;
-    idx[8]  = base + stride0;
-    idx[9]  = idx[8] + 1;
-    idx[10] = idx[8] + stride2;
-    idx[11] = idx[10] + 1;
-    idx[12] = idx[8] + stride1;
-    idx[13] = idx[12] + 1;
-    idx[14] = idx[12] + stride2;
-    idx[15] = idx[14] + 1;
-
-    double w[16];
-    w[0]  = a0*a1*a2*a3;
-    w[1]  = a0*a1*a2*b3;
-    w[2]  = a0*a1*b2*a3;
-    w[3]  = a0*a1*b2*b3;
-    w[4]  = a0*b1*a2*a3;
-    w[5]  = a0*b1*a2*b3;
-    w[6]  = a0*b1*b2*a3;
-    w[7]  = a0*b1*b2*b3;
-    w[8]  = b0*a1*a2*a3;
-    w[9]  = b0*a1*a2*b3;
-    w[10] = b0*a1*b2*a3;
-    w[11] = b0*a1*b2*b3;
-    w[12] = b0*b1*a2*a3;
-    w[13] = b0*b1*a2*b3;
-    w[14] = b0*b1*b2*a3;
-    w[15] = b0*b1*b2*b3;
-
-    const vector<double> & E  = tab_coeffs_4B_blocks_flat[quadidx][0];
-    const vector<double> & D0 = tab_coeffs_4B_blocks_flat[quadidx][1];
-    const vector<double> & D1 = tab_coeffs_4B_blocks_flat[quadidx][2];
-    const vector<double> & D2 = tab_coeffs_4B_blocks_flat[quadidx][3];
-    const vector<double> & D3 = tab_coeffs_4B_blocks_flat[quadidx][4];
-
-    for (int c=0; c<ncoeff; c++)
-    {
-        coeffE[c]  = 0.0;
-        coeffD0[c] = 0.0;
-        coeffD1[c] = 0.0;
-        coeffD2[c] = 0.0;
-        coeffD3[c] = 0.0;
-    }
-
-    for (int corner=0; corner<16; corner++)
-    {
-        size_t off = (size_t)idx[corner] * ncoeff;
-        double wc = w[corner];
-        for (int c=0; c<ncoeff; c++)
-        {
-            coeffE[c]  += wc * E [off+c];
-            coeffD0[c] += wc * D0[off+c];
-            coeffD1[c] += wc * D1[off+c];
-            coeffD2[c] += wc * D2[off+c];
-            coeffD3[c] += wc * D3[off+c];
-        }
-    }
-}
-#endif
-
 // Linear interpolation function
 double linearInterpolate(double x, double x0, double x1, double f0, double f1) 
 {
@@ -5050,6 +4122,7 @@ static inline void chimes_accumulate_4b_force_stress_from_scalars(
     }
 }
 
+#ifdef CHIMES_SUBGRAPH_REUSE
 #ifdef TABULATION
 static inline bool chimes_triplet_dx_from_runtime_slot(
     int runtime_slot,
@@ -5869,6 +4942,7 @@ void chimesFF::compute_4B_cp_direct_from_triplet_reuse(
     );
 }
 #endif
+#endif // CHIMES_SUBGRAPH_REUSE
 
 #ifdef TABULATION
 void chimesFF::compute_4B_cp_direct(
@@ -6685,6 +5759,10 @@ void chimesFF::compute_4B_cp_tab(
 #endif
 
 
+#ifdef CHIMES_SUBGRAPH_REUSE
+// ---------------------------------------------------------------------------
+// Subgraph (shared-triplet) reuse for the 4-body term
+// ---------------------------------------------------------------------------
 bool chimesFF::prepare_4B_triplet_reuse(
     const std::vector<double> & dx_trip_013,
     const std::vector<int> & typ_idxs,
@@ -6692,6 +5770,14 @@ bool chimesFF::prepare_4B_triplet_reuse(
     chimes4BTripletReuseTmp & reuse
 )
 {
+    // Returns true  -> reuse.valid, call compute_4B_from_triplet_reuse() for every l.
+    // Returns false -> check reuse.triplet_out_of_range:
+    //                    true  : this (i,j,k,type_l) combination can never interact
+    //                            (triplet side outside the 4B cutoff, or no quad type);
+    //                            the caller may skip every l of this type.
+    //                    false : reuse is not supported for the active evaluator;
+    //                            the caller must fall back to the standard 4B evaluator.
+
     reuse.clear();
 
     // dx_trip_013:
@@ -6711,12 +5797,22 @@ bool chimesFF::prepare_4B_triplet_reuse(
         typ_idxs[2]*natmtyps +
         typ_idxs[3];
 
+    if (idx < 0 || idx >= (int)atom_int_quad_map.size() ||
+        idx >= (int)pair_int_quad_map.size())
+        return false;   // unknown mapping: let the standard evaluator decide
+
     const int quadidx = atom_int_quad_map[idx];
 
     if (quadidx < 0)
+    {
+        reuse.triplet_out_of_range = true;
         return false;
+    }
 
     std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
+
+    if ((int)mapped_pair_idx.size() != 6)
+        return false;
 
     // Check triplet-side 4B cutoffs only.
     //
@@ -6724,51 +5820,44 @@ bool chimesFF::prepare_4B_triplet_reuse(
     //   0 = ij
     //   1 = ik
     //   3 = jk
-    if (dx_trip_013[0] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]])
+    if (dx_trip_013[0] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]] ||
+        dx_trip_013[1] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]] ||
+        dx_trip_013[2] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]])
+    {
+        reuse.triplet_out_of_range = true;
         return false;
-
-    if (dx_trip_013[1] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]])
-        return false;
-
-    if (dx_trip_013[2] >= chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]])
-        return false;
+    }
 
 #ifdef TABULATION
-    // Preserve runtime evaluator precedence:
-    //   cp_direct > cp > svd4x2 > svd3x3 > coeff > direct
+    // Mirror the evaluator precedence used by pair_chimes for the standard path:
+    //   cp_direct > cp > svd4x2 > svd3x3 > direct
     //
-    // If a CP representation exists for this quad type, either prepare CP
-    // reuse or decline reuse. Do not fall through to another tabulation mode.
-    if (tabulate_4B_cp_direct &&
-        (int)tab_4b_cp_direct_rank.size() > quadidx &&
-        tab_4b_cp_direct_rank[quadidx] > 0)
+    // The highest-precedence *enabled* mode is the active evaluator. If that
+    // mode has tables for this quad type, prepare its reuse object (or decline
+    // for svd4x2, which has no triplet/l factorization). If it has no tables
+    // for this quad type, the standard evaluator falls back to compute_4B(),
+    // so the direct polynomial reuse below is the exact equivalent.
+    if (tabulate_4B_cp_direct)
     {
-        return prepare_4B_cp_direct_triplet_reuse(
-            dx_trip_013,
-            typ_idxs,
-            tmp,
-            reuse
-        );
+        if ((int)tab_4b_cp_direct_rank.size() > quadidx &&
+            tab_4b_cp_direct_rank[quadidx] > 0)
+            return prepare_4B_cp_direct_triplet_reuse(dx_trip_013, typ_idxs, tmp, reuse);
     }
-
-    if (tabulate_4B_cp &&
-        (int)tab_4b_cp_rank.size() > quadidx &&
-        tab_4b_cp_rank[quadidx] > 0)
+    else if (tabulate_4B_cp)
     {
-        return prepare_4B_cp_tab_triplet_reuse(
-            dx_trip_013,
-            typ_idxs,
-            tmp,
-            reuse
-        );
+        if ((int)tab_4b_cp_rank.size() > quadidx &&
+            tab_4b_cp_rank[quadidx] > 0)
+            return prepare_4B_cp_tab_triplet_reuse(dx_trip_013, typ_idxs, tmp, reuse);
     }
-#endif
-
-#ifdef TABULATION
-    // Fast path for 1,2,4 SVD3x3 triplet-star tables.
-    if (tabulate_4B_svd3x3 &&
-        (int)tab_4b_svd3x3_rank.size() > quadidx &&
-        tab_4b_svd3x3_rank[quadidx] > 0)
+    else if (tabulate_4B_svd4x2)
+    {
+        if ((int)tab_4b_svd4x2_rank.size() > quadidx &&
+            tab_4b_svd4x2_rank[quadidx] > 0)
+            return false;
+    }
+    else if (tabulate_4B_svd3x3 &&
+             (int)tab_4b_svd3x3_rank.size() > quadidx &&
+             tab_4b_svd3x3_rank[quadidx] > 0)
     {
         int param_to_runtime[6];
 
@@ -6882,14 +5971,10 @@ bool chimesFF::prepare_4B_triplet_reuse(
 
         return true;
     }
-#endif
 
-#ifdef TABULATION
-    if (tabulate_4B_coeff || tabulate_4B_svd4x2 || tabulate_4B_cp || tabulate_4B_cp_direct)
-        return false;
 #endif
-
-    // Direct non-tabulated sparse partial contraction.
+    // Direct (non-tabulated) polynomial evaluation: contract the triplet-side
+    // factors (ij, ik, jk) once; the l-side factors are applied per quad.
     reuse.valid = true;
     reuse.use_svd3x3 = false;
     reuse.quadidx = quadidx;
@@ -7311,13 +6396,14 @@ void chimesFF::compute_4B_from_triplet_reuse(
         stress
     );
 }
+#endif // CHIMES_SUBGRAPH_REUSE
 
 void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp &tmp)
 {              
         vector<double> dummy_force_scalar(6);
     #ifdef FINGERPRINT
         vector<vector<double>> dummy_clusters_4b;
-        bool dummy_fingerprint;
+        bool dummy_fingerprint = false;
     #endif
         compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
                     #ifdef FINGERPRINT
@@ -7896,4 +6982,3 @@ void chimesFF::build_pair_int_trip_map()
     }
     
 }
-
