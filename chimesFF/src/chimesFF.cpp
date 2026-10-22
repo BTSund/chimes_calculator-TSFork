@@ -1,7 +1,7 @@
-/* 
+/*
     ChIMES Calculator
     Copyright (C) 2020 Rebecca K. Lindsey, Nir Goldman, and Laurence E. Fried
-    Contributing Author:  Rebecca K. Lindsey (2020) 
+    Contributing Author:  Rebecca K. Lindsey (2020)
 */
 
 #include<array>
@@ -19,13 +19,13 @@
 
 using namespace std;
 
-#include "chimesFF.h"    
+#include "chimesFF.h"
 
 template <typename T>
 int get_index(const vector<T>  & vec, const T  & element)
 {
     auto it = find(vec.begin(), vec.end(), element);
- 
+
     if (it != vec.end())
     {
         return distance(vec.begin(), it);
@@ -59,10 +59,10 @@ int get_index_if(const vector<T>  & vec, const T  & element, vector<bool> & disq
     }
 
     cout << "chimesFF: " << "ERROR: Could not find element in vector: " << element << endl;
-    
+
     for(int i=0; i<vec.size(); i++)
         cout << "chimesFF: " << "\t" << vec[i] << " " << disqualified[i] << endl;
-    
+
     exit(0);
 }
 
@@ -74,23 +74,23 @@ int chimesFF::get_proper_pair(string ty1, string ty2)
         if (ty1 == pair_params_atm_chem_1[i])
             if (ty2 == pair_params_atm_chem_2[i])
                 return i;
-        
+
         if (ty2 == pair_params_atm_chem_1[i])
             if (ty1 == pair_params_atm_chem_2[i])
                 return i;
     }
-            
+
     cout << "chimesFF: " << "ERROR: No proper pair name found for atom types" << ty1 << ", " << ty2 << endl;
     exit(0);
 }
 
-string get_directory_path(const string& file_path) 
+string get_directory_path(const string& file_path)
 {
     size_t pos = file_path.find_last_of("/\\");
-    
-    if (pos != string::npos) 
+
+    if (pos != string::npos)
         return file_path.substr(0, pos);
-    else 
+    else
         return ""; // If no directory path is available
 }
 
@@ -109,9 +109,9 @@ chimesFF::chimesFF()
 {
     natmtyps = 0;
     penalty_params.resize(2);
-    
+
     // Set defaults
-    
+
 #ifdef TABULATION
     tabulate_2B = false;
     tabulate_3B = false;
@@ -120,14 +120,14 @@ chimesFF::chimesFF()
     tabulate_4B_svd4x2 = false;
     tabulate_4B_cp = false;
 #endif
-    
+
     fcut_type = fcutType::CUBIC ;
-    
+
     penalty_params[0] = 0.01;
     penalty_params[1] = 1.0E4;
 
     inner_smooth_distance = 0.01 ;
-	
+
 }
 chimesFF::~chimesFF(){}
 
@@ -151,44 +151,44 @@ void chimesFF::print_pretty_stuff()
         cout << "chimesFF: " << "    | |____ | | | | _| |_ | |  | || |____  ____) | | |____ | | | || (_| || || | | ||  __/        " << endl;
         cout << "chimesFF: " << "     \\_____||_| |_||_____||_|  |_||______||_____/  |______||_| |_| \\__, ||_||_| |_| \\___|     " << endl;
         cout << "chimesFF: " << "                                                                    __/ |                        " << endl;
-        cout << "chimesFF: " << "                                                                   |___/                         " << endl;  
+        cout << "chimesFF: " << "                                                                   |___/                         " << endl;
         cout << "chimesFF: " << endl;
-        cout << "chimesFF: " << "                     Copyright (C) 2020 R.K. Lindsey, L.E. Fried, N. Goldman                     " << endl;    
+        cout << "chimesFF: " << "                     Copyright (C) 2020 R.K. Lindsey, L.E. Fried, N. Goldman                     " << endl;
         cout << "chimesFF: " << endl;
         cout << "chimesFF: " << "01000011011010001001001010011010100010101010011 0100010101101110110011101101001011011101100101   " << endl;
         cout << "chimesFF: " << endl;
     }
-      
+
 }
 
 int chimesFF::split_line(string line, vector<string> & items)
 {
     // Break a line up into tokens based on space separators.
     // Returns the number of tokens parsed.
-    
+
     string       contents;
     stringstream sstream;
 
     // Strip comments beginining with ! or ## and terminal new line
 
     int pos = line.find('!');
-      
-    if ( pos != string::npos ) 
+
+    if ( pos != string::npos )
         line.erase(pos, line.length() - pos);
 
     pos = line.find("##");
-    if ( pos != string::npos ) 
+    if ( pos != string::npos )
         line.erase(pos, line.length()-pos);
 
     pos = line.find('\n');
-    if ( pos != string::npos ) 
+    if ( pos != string::npos )
         line.erase(pos, 1);
 
     sstream.str(line);
-     
+
     items.clear();
 
-    while ( sstream >> contents ) 
+    while ( sstream >> contents )
         items.push_back(contents);
 
     return items.size();
@@ -197,17 +197,17 @@ int chimesFF::split_line(string line, vector<string> & items)
 string chimesFF::get_next_line(istream& str)
 {
     // Read a line and return it, with error checking.
-    
+
     string line;
 
     getline(str, line);
-    
+
     if ( ! str.good() )
     {
         if (rank == 0)
             cout << "chimesFF: " << "Error reading line" << line << endl;
         exit(0);
-    } 
+    }
 
     return line;
 }
@@ -217,16 +217,16 @@ void chimesFF::read_2B_tab(string tab_file, bool energy)
 {
     // Note: Force and energy tabulation should use the same exact rij values
     // Note: Those rij values should be listed in ascending order
-    
+
     ifstream tab_files;
-    
+
     if (energy)
         tab_file += ".energy";
     else
         tab_file += ".force";
     tab_files.open(tab_file);
-    
-    
+
+
     if (!tab_files.is_open())
     {
         cout << "ERROR: Could not open file: " << tab_file << endl;
@@ -240,7 +240,7 @@ void chimesFF::read_2B_tab(string tab_file, bool energy)
     vector<double> tmp_rij;
     vector<double> tmp_val;
     int ntablines = stoi(get_next_line(tab_files));
-    
+
     string line;
     vector<string> tmp_str_items;
     int tmp_no_items;
@@ -249,7 +249,7 @@ void chimesFF::read_2B_tab(string tab_file, bool energy)
     {
         line         = get_next_line(tab_files);
         tmp_no_items = split_line(line, tmp_str_items);
-    
+
         if (tmp_no_items != 2)
         {
             cout << "ERROR: Expected to read two items distance and a force or energy, instead read " << tmp_no_items << " items" << endl;
@@ -264,11 +264,11 @@ void chimesFF::read_2B_tab(string tab_file, bool energy)
     if (energy)
     {
         tab_r.push_back(tmp_rij);
-        tab_e.push_back(tmp_val);                        
+        tab_e.push_back(tmp_val);
     }
     else
-        tab_f.push_back(tmp_val);   
-    
+        tab_f.push_back(tmp_val);
+
     tab_files.close();
 }
 
@@ -278,16 +278,16 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
     // Note: Those rij values should be listed in ascending order
     // Note: Pairs should be sorted alphabetically, i.e., CC CO CO versus CO CC CO or CO CO CC
     // Note: For pairs of the same type, the data should be sorted such that the first column alway has the larger number... this symmetry will lead to smaller tabulation file sizes
-    
+
     ifstream tab_files;
-    
+
     if (energy)
         tab_file += ".energy";
     else
         tab_file += ".force";
-    
+
     tab_files.open(tab_file);
-    
+
     if (!tab_files.is_open())
     {
         cout << "ERROR: Could not open file: " << tab_file << endl;
@@ -302,14 +302,14 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
     vector<double> tmp_rij;
     vector<double> tmp_rik;
     vector<double> tmp_rjk;
-    
+
     vector<double> tmp_val_ij;
     vector<double> tmp_val_ik;
     vector<double> tmp_val_jk;
-    
-    
+
+
     int ntablines = stoi(get_next_line(tab_files));
-    
+
     string line;
     vector<string> tmp_str_items;
     int tmp_no_items;
@@ -328,9 +328,9 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
             cout << "       Line: " << line << endl;
             exit(0);
         }
-        
+
         //==cout << tmp_str_items[0] << " " << tmp_str_items[1] << endl;
-    
+
         tmp_rij.push_back(stod(tmp_str_items[0]));
         tmp_rik.push_back(stod(tmp_str_items[1]));
         tmp_rjk.push_back(stod(tmp_str_items[2]));
@@ -344,7 +344,7 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
             tmp_val_ik.push_back(stod(tmp_str_items[4]));
             tmp_val_jk.push_back(stod(tmp_str_items[5]));
         }
-       // cout << tmp_str_items[3] << endl;
+        // cout << tmp_str_items[3] << endl;
     }
 
     if (energy)
@@ -352,15 +352,15 @@ void chimesFF::read_3B_tab(string tab_file, bool energy)
         tab_rij_3B.push_back(tmp_rij);
         tab_rik_3B.push_back(tmp_rik);
         tab_rjk_3B.push_back(tmp_rjk);
-        tab_e_3B.push_back(tmp_val_ij);                     
+        tab_e_3B.push_back(tmp_val_ij);
     }
     else
     {
-       // for (int i=0; i<tmp_val_ij.size(); i++){cout << tmp_val_ij[i]<< endl;}
+        // for (int i=0; i<tmp_val_ij.size(); i++){cout << tmp_val_ij[i]<< endl;}
 
-        tab_f_ij_3B.push_back(tmp_val_ij); 
-        tab_f_ik_3B.push_back(tmp_val_ik); 
-        tab_f_jk_3B.push_back(tmp_val_jk); 
+        tab_f_ij_3B.push_back(tmp_val_ij);
+        tab_f_ik_3B.push_back(tmp_val_ik);
+        tab_f_jk_3B.push_back(tmp_val_jk);
     }
 
     tab_files.close();
@@ -467,9 +467,7 @@ void chimesFF::read_4B_cp_direct_file(std::string factor_file, int quadidx)
                 exit(0);
             }
 
-            tab_4b_cp_direct_factor[quadidx][c].resize(
-                (size_t)nrows * (size_t)ncols
-            );
+            tab_4b_cp_direct_factor[quadidx][c].resize((size_t)nrows * (size_t)ncols);
 
             for (int p = 0; p < nrows; p++)
             {
@@ -504,7 +502,7 @@ void chimesFF::read_4B_cp_direct_file(std::string factor_file, int quadidx)
                 {
                     tab_4b_cp_direct_factor[quadidx][c][
                         (size_t)p * (size_t)ncols + (size_t)q
-                    ] = static_cast<float>(std::stod(items[q + 1]));
+                    ] = static_cast<chimes_tab_real>(std::stod(items[q + 1]));
                 }
             }
         }
@@ -765,10 +763,7 @@ void chimesFF::read_4B_svd4x2_meta(string meta_file, int quadidx)
             for (int i=1; i<n; i++)
                 canon_to_param.push_back(stoi(items[i]));
         }
-        else if (
-            items[0] == "pair_types_canonical" ||
-            items[0] == "canonical_pair_types"
-        )
+        else if (items[0] == "pair_types_canonical" || items[0] == "canonical_pair_types")
         {
             canonical_pair_types.clear();
             for (int i=1; i<n; i++)
@@ -846,10 +841,7 @@ void chimesFF::read_4B_svd3x3_meta(string meta_file, int quadidx)
             for (int i=1; i<n; i++)
                 canon_to_param.push_back(stoi(items[i]));
         }
-        else if (
-            items[0] == "pair_types_canonical" ||
-            items[0] == "canonical_pair_types"
-        )
+        else if (items[0] == "pair_types_canonical" || items[0] == "canonical_pair_types")
         {
             canonical_pair_types.clear();
             for (int i=1; i<n; i++)
@@ -900,8 +892,7 @@ void chimesFF::read_4B_svd4x2_tab(string data_file, int quadidx, bool left_side)
         exit(0);
     }
 
-    if ((int)tab_4b_svd4x2_rank.size() <= quadidx ||
-        tab_4b_svd4x2_rank[quadidx] <= 0)
+    if ((int)tab_4b_svd4x2_rank.size() <= quadidx || tab_4b_svd4x2_rank[quadidx] <= 0)
     {
         cout << "ERROR: Must read SVD4X2 metadata before data file for quad type "
              << quadidx << endl;
@@ -1031,11 +1022,7 @@ void chimesFF::read_4B_svd4x2_tab(string data_file, int quadidx, bool left_side)
 #endif
 
 #ifdef TABULATION
-void chimesFF::interpolateSVD4x2SideLinear(
-    const SVD4x2SideTable &tab,
-    const double *rquery,
-    double **out_blocks
-)
+void chimesFF::interpolateSVD4x2SideLinear(const SVD4x2SideTable &tab, const double *rquery, double **out_blocks)
 {
     const int ndim = tab.ndim;
     const int R = tab.rank;
@@ -1106,8 +1093,7 @@ void chimesFF::read_4B_svd3x3_tab(string data_file, int quadidx, bool left_side)
         exit(0);
     }
 
-    if ((int)tab_4b_svd3x3_rank.size() <= quadidx ||
-        tab_4b_svd3x3_rank[quadidx] <= 0)
+    if ((int)tab_4b_svd3x3_rank.size() <= quadidx || tab_4b_svd3x3_rank[quadidx] <= 0)
     {
         cout << "ERROR: Must read SVD3X3 metadata before data file for quad type "
              << quadidx << endl;
@@ -1224,14 +1210,7 @@ void chimesFF::read_4B_svd3x3_tab(string data_file, int quadidx, bool left_side)
 }
 #endif
 #ifdef TABULATION
-void chimesFF::interpolateSVD3x3SideLinear(
-    const SVD3x3SideTable &tab,
-    const double *rquery,
-    double *val,
-    double *d0,
-    double *d1,
-    double *d2
-)
+void chimesFF::interpolateSVD3x3SideLinear(const SVD3x3SideTable &tab, const double *rquery, double *val, double *d0, double *d1, double *d2)
 {
     const int R = tab.rank;
     const int ngrid = tab.ngrid;
@@ -1330,15 +1309,7 @@ void chimesFF::interpolateSVD3x3SideLinear(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_svd4x2_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_svd4x2_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     vector<double> dummy_force_scalar(6);
     compute_4B_svd4x2_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
@@ -1346,16 +1317,7 @@ void chimesFF::compute_4B_svd4x2_tab(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_svd4x2_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    vector<double> & force_scalar_in
-)
+void chimesFF::compute_4B_svd4x2_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp, vector<double> & force_scalar_in)
 {
     const int npairs = 6;
 
@@ -1368,8 +1330,7 @@ void chimesFF::compute_4B_svd4x2_tab(
     if (quadidx < 0)
         return;
 
-    if ((int)tab_4b_svd4x2_rank.size() <= quadidx ||
-        tab_4b_svd4x2_rank[quadidx] <= 0)
+    if ((int)tab_4b_svd4x2_rank.size() <= quadidx || tab_4b_svd4x2_rank[quadidx] <= 0)
     {
         compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
         return;
@@ -1559,31 +1520,15 @@ void chimesFF::compute_4B_svd4x2_tab(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_svd3x3_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_svd3x3_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     vector<double> dummy_force_scalar(6);
-    compute_4B_svd3x3_tab(
-        dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
-    );
+    compute_4B_svd3x3_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 #endif
 
 #ifdef TABULATION
-void chimesFF::build_runtime_canonical_maps_4B(
-    int quadidx,
-    const std::vector<int> & mapped_pair_idx,
-    const std::vector<double> & dx,
-    int *canon_to_runtime,
-    int *runtime_to_canon
-)
+void chimesFF::build_runtime_canonical_maps_4B(int quadidx, const std::vector<int> & mapped_pair_idx, const std::vector<double> & dx, int *canon_to_runtime, int *runtime_to_canon)
 {
     int param_to_runtime[6];
     for (int r = 0; r < 6; r++)
@@ -1743,25 +1688,25 @@ void chimesFF::read_4B_coeff_tab(string data_file, int quadidx)
 void chimesFF::read_parameters(string paramfile)
 {
     // Open the parameter file, run sanity checks
-    
+
     ifstream param_file;
     param_file.open(paramfile.data());
-    
+
     string param_file_path = get_directory_path(paramfile);
 
     if (rank == 0)
         cout << "chimesFF: " << "Reading parameters from file: " << paramfile << endl;
-    
+
     if(!param_file.is_open())
     {
         if (rank == 0)
             cout << "chimesFF: " << "ERROR: Cannot open parameter file: " << paramfile << endl;
         exit(0);
     }
-    
+
     // Declare parsing variables
-    
-    
+
+
     bool           found_end = false;
     string         line;
     string         tmp_str;
@@ -1769,20 +1714,20 @@ void chimesFF::read_parameters(string paramfile)
     int            tmp_no_items;
     int            tmp_int;
     int            no_pairs;
-    
+
     // Variables to track if penalty parameters were found in file
     bool found_penalty_dist = false;
     bool found_penalty_scaling = false;
-    
+
     // Check that this is actually a chebyshev parameter set
 
     while (!found_end)
     {
         line = get_next_line(param_file);
 
-           // Break out of loop
+        // Break out of loop
 
-           if(line.find("ENDFILE") != string::npos)
+        if(line.find("ENDFILE") != string::npos)
         {
             if (rank == 0)
             {
@@ -1794,229 +1739,229 @@ void chimesFF::read_parameters(string paramfile)
         if(line.find("PAIRTYP: CHEBYSHEV") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
-            
+
             if (tmp_no_items < 3)
-            {    
+            {
                 if (rank == 0)
                     cout << "chimesFF: " << "ERROR: \"PAIRTYP: CHEBYSHEV\" line must at least contain the 2-body order" << endl;
                 exit(0);
             }
-            
+
             poly_orders.push_back(stoi(tmp_str_items[2]));
-            
+
             if (tmp_no_items >= 4)
                 poly_orders.push_back(stoi(tmp_str_items[3]));
 
             if (tmp_no_items >= 5)
-                poly_orders.push_back(stoi(tmp_str_items[4]));    
-            
+                poly_orders.push_back(stoi(tmp_str_items[4]));
+
             while (poly_orders.size() < 3)
                 poly_orders.push_back(0);
-            
+
             if (rank == 0)
             {
                 cout << "chimesFF: " << "Using respective 2, 3, and 4-body orders of: " << poly_orders[0] << " " << poly_orders[1] << " " << poly_orders[2] << endl;
-            
-                cout << "chimesFF: " << "Note: Ignoring polynomial domain; assuming [-1,1]" << endl;    
+
+                cout << "chimesFF: " << "Note: Ignoring polynomial domain; assuming [-1,1]" << endl;
             }
-            
-            break;    
+
+            break;
         }
     }
-    
+
     // If we've made it to here, then this should contain Chebyshev params. Rewind and start looking for general information
-        
+
     param_file.seekg(0);
-    
+
     found_end = false;
-    
+
     while (!found_end)
     {
         line = get_next_line(param_file);
-        
-           if(line.find("ENDFILE") != string::npos)
-            break;        
-    
+
+        if(line.find("ENDFILE") != string::npos)
+         break;
+
         if(line.find("ATOM TYPES:") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
-        
+
             natmtyps = stoi(tmp_str_items[2]);
-        
+
             if (rank == 0)
                 cout << "chimesFF: " << "Will consider " << natmtyps << " atom types:" << endl;
-                
+
             energy_offsets.resize(natmtyps);
-            
+
             for(int i=0; i<natmtyps; i++)
                 energy_offsets[i] = 0.0;
         }
-        
+
         if(line.find("# TYPEIDX #") != string::npos)
         {
             atmtyps.resize(natmtyps);
-			masses.resize(natmtyps);
+            masses.resize(natmtyps);
             for (int i=0; i<natmtyps; i++)
             {
                 line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
                 atmtyps[i] = tmp_str_items[1];
-				masses[i]  = stod(tmp_str_items[3]);
-                
+                masses[i]  = stod(tmp_str_items[3]);
+
                 if (rank == 0)
                     cout << "chimesFF: " << "\t" << i << " " << atmtyps[i] << endl;
             }
-            
+
         }
-            
+
         if(line.find("ATOM PAIRS:") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
-        
+
             no_pairs = stoi(tmp_str_items[2]);
-        
+
             if (rank == 0)
-                cout << "chimesFF: " << "Will consider " << no_pairs << " atom pair types" << endl;        
-        }    
-        
+                cout << "chimesFF: " << "Will consider " << no_pairs << " atom pair types" << endl;
+        }
+
         if(line.find("# PAIRIDX #") != string::npos)
         {
             if(line.find("# USEOVRP #") != string::npos)
                 continue;
-        
+
             pair_params_atm_chem_1.resize(no_pairs);
             pair_params_atm_chem_2.resize(no_pairs);
             chimes_2b_cutoff      .resize(no_pairs);
             morse_var             .resize(no_pairs);
-            
+
             ncoeffs_2b            .resize(no_pairs);
             chimes_2b_pows        .resize(no_pairs);
             chimes_2b_params      .resize(no_pairs);
             chimes_2b_cutoff      .resize(no_pairs);
 
             string tmp_xform_style;
-            
+
             for (int i=0; i<no_pairs; i++)
             {
                 line = get_next_line(param_file);
-                
+
                 tmp_no_items = split_line(line, tmp_str_items);
 
                 int pair_input_version = 0;
-				
+
                 if ( tmp_no_items == 8 )
                 {
-					if ( rank == 0 && i == 0 ) cout << "chimesFF: Detected version 1 pair specification (with S_DELTA)\n";
-					pair_input_version = 1;
+                    if ( rank == 0 && i == 0 ) cout << "chimesFF: Detected version 1 pair specification (with S_DELTA)\n";
+                    pair_input_version = 1;
                 }
                 else if ( tmp_no_items == 7 )
                 {
-					if ( rank == 0 && i == 0 ) cout << "chimesFF: Detected version 2 pair specification (no S_DELTA)\n";
-					pair_input_version = 2;
+                    if ( rank == 0 && i == 0 ) cout << "chimesFF: Detected version 2 pair specification (no S_DELTA)\n";
+                    pair_input_version = 2;
                 }
                 else
                 {
-					if ( rank == 0 )
-					{
-						cout << "Incorrect input in line: " << line << endl;
-						cout << "Expect 7 or 8 entries\n";
-					}
-					exit(0);
+                    if ( rank == 0 )
+                    {
+                        cout << "Incorrect input in line: " << line << endl;
+                        cout << "Expect 7 or 8 entries\n";
+                    }
+                    exit(0);
                 }
-            
+
                 pair_params_atm_chem_1[i] = tmp_str_items[1];
                 pair_params_atm_chem_2[i] = tmp_str_items[2];
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "\t" << i << " " << pair_params_atm_chem_1[i] << " " << pair_params_atm_chem_2[i]<< endl;
-                
-                chimes_2b_cutoff[i].push_back(stod(tmp_str_items[3])); // Inner cutoff    
+
+                chimes_2b_cutoff[i].push_back(stod(tmp_str_items[3])); // Inner cutoff
                 chimes_2b_cutoff[i].push_back(stod(tmp_str_items[4])); // Outer cutoff
 
                 int xform_style_idx, morse_idx;
-				
+
                 if ( pair_input_version == 1 )
                 {
-					xform_style_idx = 6;
-					morse_idx = 7;
+                    xform_style_idx = 6;
+                    morse_idx = 7;
                 }
                 else if ( pair_input_version == 2 )
                 {
-					xform_style_idx = 5;
-					morse_idx = 6;
-                } 
+                    xform_style_idx = 5;
+                    morse_idx = 6;
+                }
                 else
                 {
-					if ( rank == 0 ) cout << "Bad pair input version\n";
-					exit(0);
+                    if ( rank == 0 ) cout << "Bad pair input version\n";
+                    exit(0);
                 }
-                    
+
                 if (i==0)
                 {
                     tmp_xform_style = tmp_str_items[xform_style_idx];
                 }
-                else if ( tmp_str_items[xform_style_idx] != tmp_xform_style)    
+                else if ( tmp_str_items[xform_style_idx] != tmp_xform_style)
                 {
-					if (rank == 0)
-						cout << "chimesFF: " << "Distance transformation style must be the same for all pair types" << endl;
-					exit(0);
+                    if (rank == 0)
+                        cout << "chimesFF: " << "Distance transformation style must be the same for all pair types" << endl;
+                    exit(0);
                 }
 
                 if (tmp_xform_style == "MORSE" )
                 {
-					if ( tmp_no_items > morse_idx )
-						morse_var[i] = stod(tmp_str_items[morse_idx]);
-					else {
-						if ( rank == 0 )
-							cout << "chimesFF: Missing morse lambda value in line: \n" << line << endl;
-						exit(0);
-					}
-				}
+                    if ( tmp_no_items > morse_idx )
+                        morse_var[i] = stod(tmp_str_items[morse_idx]);
+                    else {
+                        if ( rank == 0 )
+                            cout << "chimesFF: Missing morse lambda value in line: \n" << line << endl;
+                        exit(0);
+                    }
+                }
             }
-                
+
             xform_style = tmp_xform_style;
-            
+
             if (rank == 0)
                 cout << "chimesFF: " << "Read the following pair type information:" << endl;
-            
+
             for (int i=0; i<no_pairs; i++)
             {
-				if (rank == 0)
-					cout << "chimesFF: " << "\t" << pair_params_atm_chem_1[i] << " " << pair_params_atm_chem_2[i] << " r_cut_in: " << fixed << right << setprecision(5) << chimes_2b_cutoff[i][0] << " r_cut_out: " << chimes_2b_cutoff[i][1] << " " <<  xform_style;
-                
-				if (xform_style == "MORSE")
-				{
-					if (rank == 0)
-						cout << " " << morse_var[i] << endl;
-				}
-				else
-					if (rank == 0)
-						cout << endl;
-			}
+                if (rank == 0)
+                    cout << "chimesFF: " << "\t" << pair_params_atm_chem_1[i] << " " << pair_params_atm_chem_2[i] << " r_cut_in: " << fixed << right << setprecision(5) << chimes_2b_cutoff[i][0] << " r_cut_out: " << chimes_2b_cutoff[i][1] << " " <<  xform_style;
+
+                if (xform_style == "MORSE")
+                {
+                    if (rank == 0)
+                        cout << " " << morse_var[i] << endl;
+                }
+                else
+                    if (rank == 0)
+                        cout << endl;
+            }
         }
-            
+
         if(line.find("FCUT TYPE:") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
-        
+
             if ( tmp_str_items[2] == "CUBIC" )
                 fcut_type = fcutType::CUBIC ;
             else if ( tmp_str_items[2] == "TERSOFF" )
                 fcut_type = fcutType::TERSOFF ;
             else
             {
-                if ( rank == 0 ) 
+                if ( rank == 0 )
                     cout << "Error: unknown FCUT TYPE: " << tmp_str_items[2] << endl ;
                 exit(1) ;
             }
-                    
+
             if (rank == 0)
                 cout << "chimesFF: " << "Will use cutoff style " << tmp_str_items[2] << endl ;
-            
+
             if (fcut_type == fcutType::TERSOFF )
             {
                 fcut_var = stod(tmp_str_items[3]);
-                
+
                 if (rank == 0)
                     cout << " " << fcut_var << endl;
             }
@@ -2024,27 +1969,27 @@ void chimesFF::read_parameters(string paramfile)
                 if (rank == 0)
                     cout << endl;
         }
-        
+
         if(line.find("PAIR CHEBYSHEV PENALTY DIST:") != string::npos)
-        {    
+        {
             tmp_no_items = split_line(line, tmp_str_items);
-            
+
             penalty_params[0] = stod(tmp_str_items[4]);
             found_penalty_dist = true;
         }
-        
+
         if(line.find("PAIR CHEBYSHEV PENALTY SCALING:") != string::npos)
-        {    
+        {
             tmp_no_items = split_line(line, tmp_str_items);
-            
+
             penalty_params[1] = stod(tmp_str_items[4]);
             found_penalty_scaling = true;
         }
-        
+
         if(line.find("NO ENERGY OFFSETS:") != string::npos)
         {
             int tmp_no = split_line(line, tmp_str_items);
-                        
+
             if(stoi(tmp_str_items[tmp_no-1]) != natmtyps)
             {
                 cout << "chimesFF: " << "ERROR: Number of energy offsets do not match number of atom types" << endl;
@@ -2052,27 +1997,27 @@ void chimesFF::read_parameters(string paramfile)
             }
 
             // Expects atom offsets in the same order as atom types were provided originally
-            
+
             if (rank == 0)
                 cout << "chimesFF: " << "Will use single atom energy offsets: "<< endl;
-            
+
             int tmp_idx;
-            
+
             for (int i=0; i<natmtyps; i++)
             {
                 line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
                 tmp_idx = stoi(tmp_str_items[2]);
-                
+
                 energy_offsets[tmp_idx-1] = stod(tmp_str_items[3]);
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "\t" << tmp_idx << " " << atmtyps[tmp_idx-1] << " " << energy_offsets[tmp_idx-1] << endl;
             }
-            
-        }                
+
+        }
     }
-    
+
     // Output messages about penalty parameters once after file parsing
     if (rank == 0)
     {
@@ -2080,45 +2025,45 @@ void chimesFF::read_parameters(string paramfile)
             cout << "chimesFF: " << "Will use penalty distance: " << penalty_params[0] << endl;
         else
             cout << "chimesFF: " << "Will use default penalty distance: " << penalty_params[0] << endl;
-            
+
         if (found_penalty_scaling)
             cout << "chimesFF: " << "Will use penalty scaling: " << penalty_params[1] << endl;
         else
             cout << "chimesFF: " << "Will use default penalty scaling: " << penalty_params[1] << endl;
     }
-    
+
     // Rewind and read the 2-body Chebyshev pair parameters
-    
+
     param_file.seekg(0);
-    
+
     found_end = false;
-    
+
     while (!found_end)
     {
-		line = get_next_line(param_file);
+        line = get_next_line(param_file);
 
-		if(line.find("ENDFILE") != string::npos)
-			break;            
-        
+        if(line.find("ENDFILE") != string::npos)
+            break;
+
         if(line.find("PAIRTYPE PARAMS:") != string::npos)
         {
             tmp_no_items = split_line(line, tmp_str_items);
-            
+
 #ifdef TABULATION
             if (tmp_no_items == 7) // Then these 2B parameters are tabulated
             {
                 tab_param_files.push_back(param_file_path + tmp_str_items[6]);
-                
+
                 if (rank == 0)
                 {
                     cout << "chimesFF: " << "Read 2B parameters for pair: " << tmp_int << " " << tmp_str_items[3] << " " << tmp_str_items[4] << " These are tabulated in " << tab_param_files[tab_param_files.size()-1] << "*" << endl;
                     cout << "chimesFF: " << "Note: Expects penalty function to be included in tabulation" << endl;
                 }
                 read_2B_tab(tab_param_files[tab_param_files.size()-1]);         // Read tabulated energies
-                
+
                 read_2B_tab(tab_param_files[tab_param_files.size()-1],false);   // Read tabulated forces
 
-                tabulate_2B = true;              
+                tabulate_2B = true;
             }
             else
             {
@@ -2128,58 +2073,58 @@ void chimesFF::read_parameters(string paramfile)
                     exit(0);
                 }
 #endif
-                
+
                 tmp_int = stoi(tmp_str_items[2]);
-            
-            if (rank == 0)
-                cout << "chimesFF: " << "Read 2B parameters for pair: " << tmp_int << " " << tmp_str_items[3] << " " << tmp_str_items[4] << endl;
-            
-            line = get_next_line(param_file);
-            
-            split_line(line, tmp_str_items); // Empty line
-            
-            ncoeffs_2b[tmp_int] = poly_orders[0];
-            
-            for(int i=0; i<poly_orders[0]; i++)
-            {
-                line = get_next_line(param_file);
-                split_line(line, tmp_str_items);
-                
-                chimes_2b_pows  [tmp_int].push_back(stoi(tmp_str_items[0]));                
-                chimes_2b_params[tmp_int].push_back(stod(tmp_str_items[1]));
-                
+
                 if (rank == 0)
-                    cout << "chimesFF: " << "\t" << chimes_2b_pows[tmp_int][i] << " " << chimes_2b_params[tmp_int][i] << endl;
-            }
-            #ifdef TABULATION
+                    cout << "chimesFF: " << "Read 2B parameters for pair: " << tmp_int << " " << tmp_str_items[3] << " " << tmp_str_items[4] << endl;
+
+                line = get_next_line(param_file);
+
+                split_line(line, tmp_str_items); // Empty line
+
+                ncoeffs_2b[tmp_int] = poly_orders[0];
+
+                for(int i=0; i<poly_orders[0]; i++)
+                {
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    chimes_2b_pows  [tmp_int].push_back(stoi(tmp_str_items[0]));
+                    chimes_2b_params[tmp_int].push_back(stod(tmp_str_items[1]));
+
+                    if (rank == 0)
+                        cout << "chimesFF: " << "\t" << chimes_2b_pows[tmp_int][i] << " " << chimes_2b_params[tmp_int][i] << endl;
+                }
+#ifdef TABULATION
             }
 #endif
         }
-        
+
         if(line.find("PAIRMAPS:") != string::npos)
         {
             // Read the slow map and build the fast map
-            
+
             tmp_no_items = split_line(line, tmp_str_items);
-            
+
             n_pair_maps = stoi(tmp_str_items[1]);
-            
+
             atom_typ_pair_map.resize(n_pair_maps);
             atom_idx_pair_map.resize(n_pair_maps);
-            
+
             atom_int_prpr_map.resize(n_pair_maps);
-            
+
             if (rank == 0)
                 cout << "chimesFF: " << "Built the following 2-body pair \"slow\" map:" << endl;
-            
+
             for(int i=0; i<n_pair_maps; i++)
             {
                 line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
-                
+
                 atom_idx_pair_map[i] = stoi(tmp_str_items[0]);
                 atom_typ_pair_map[i] =      tmp_str_items[1];
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "\t" << atom_idx_pair_map[i] << " " << atom_typ_pair_map[i] << "(i: " << i << ")" << endl;
 
@@ -2187,78 +2132,78 @@ void chimesFF::read_parameters(string paramfile)
 
             if (rank == 0)
                 cout << "chimesFF: " << "Built the following 2-body pair \"fast\" map:" << endl;
-            
+
             atom_int_pair_map.resize((natmtyps-1)*natmtyps + (natmtyps-1) + 1); // Maximum possible pair value + a small buffer
-            
+
 
             for(int i=0; i<natmtyps; i++)
             {
                 for (int j=0; j<natmtyps; j++)
                 {
                     // Get the pair type name for the set of atoms
-                    
+
                     tmp_str = atmtyps[i] + atmtyps[j];
 
                     tmp_int = get_index(atom_typ_pair_map, tmp_str);
-                    
+
                     atom_int_pair_map[ i*natmtyps + j ] = atom_idx_pair_map[tmp_int];
-                    
+
 
                     tmp_int = get_proper_pair(atmtyps[i],atmtyps[j]);
-                    
+
                     atom_int_prpr_map [ i*natmtyps + j ] = pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
 
-                    
+
                     if (rank == 0)
                         cout << "chimesFF: " << "\t" << tmp_str << ": " << i*natmtyps + j << " " << atom_int_pair_map[ i*natmtyps + j ] << endl;
 
                 }
-            }                        
+            }
         }
     }
-    
+
     // Rewind and read the 3-body Chebyshev pair parameters
-    
+
     if (poly_orders[1] > 0)
     {
         int ntrips;
         int tmp_idx;
-        
+
         // Read parameters
-        
+
         param_file.seekg(0);
-        
+
         found_end = false;
-    
+
         while (!found_end)
         {
             line = get_next_line(param_file);
-        
-               if(line.find("ENDFILE") != string::npos)
-                break;    
-            
+
+            if(line.find("ENDFILE") != string::npos)
+             break;
+
             if(line.find("ATOM PAIR TRIPLETS:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 ntrips = stoi(tmp_str_items[3]);
-                                
+
                 ncoeffs_3b      .resize(ntrips);
-                chimes_3b_powers.resize(ntrips);                
+                chimes_3b_powers.resize(ntrips);
                 chimes_3b_params.resize(ntrips);
                 chimes_3b_cutoff.resize(ntrips);
-    
-                
-                trip_params_atm_chems.resize(ntrips);                
+
+
+                trip_params_atm_chems.resize(ntrips);
                 trip_params_pair_typs.resize(ntrips);
             }
-            
+
             if(line.find("TRIPLETTYPE PARAMS:") != string::npos)
             {
                 vector<int> tmp_int_vec(3);
 
                 line = get_next_line(param_file);
-                
+
                 tmp_no_items = split_line(line, tmp_str_items);
 
                 tmp_int = stoi(tmp_str_items[1]);
@@ -2271,91 +2216,91 @@ void chimesFF::read_parameters(string paramfile)
                 if (tmp_no_items == 8){  // 3B are tabulated
 
                     tab_param_files.push_back(param_file_path  + tmp_str_items[7]);
-                    
+
                     if (rank == 0)
                     {
                         cout << "chimesFF: " << "Read 3B parameters for pair: " << tmp_int << " " << tmp_str_items[3] << " " << tmp_str_items[4] << " " << tmp_str_items[5] << " These are tabulated in " << tab_param_files[tab_param_files.size()-1] << "*" << endl;
                         cout << "chimesFF: " << "Note: Expects penalty function to be included in tabulation" << endl;
                     }
-                    tabulate_3B = true;      
+                    tabulate_3B = true;
                     read_3B_tab(tab_param_files[tab_param_files.size()-1],true);         // Read tabulated energies
                     read_3B_tab(tab_param_files[tab_param_files.size()-1],false);   // Read tabulated forces
-                } 
+                }
 #endif
-                
 
-                    if (rank == 0)
-                        cout << "chimesFF: " << "Read 3B parameters for triplet: " << tmp_int << " " << trip_params_atm_chems[tmp_int][0] << " " << trip_params_atm_chems[tmp_int][1] << " " << trip_params_atm_chems[tmp_int][2] << endl;
-                    
-                    line = get_next_line(param_file);
-                    
-                    split_line(line, tmp_str_items);
 
-                    trip_params_pair_typs[tmp_int].push_back(tmp_str_items[1]);
-                    trip_params_pair_typs[tmp_int].push_back(tmp_str_items[2]);
-                    trip_params_pair_typs[tmp_int].push_back(tmp_str_items[3]);
-                
-		// Check for excluded triplet types
-	
+                if (rank == 0)
+                    cout << "chimesFF: " << "Read 3B parameters for triplet: " << tmp_int << " " << trip_params_atm_chems[tmp_int][0] << " " << trip_params_atm_chems[tmp_int][1] << " " << trip_params_atm_chems[tmp_int][2] << endl;
+
+                line = get_next_line(param_file);
+
+                split_line(line, tmp_str_items);
+
+                trip_params_pair_typs[tmp_int].push_back(tmp_str_items[1]);
+                trip_params_pair_typs[tmp_int].push_back(tmp_str_items[2]);
+                trip_params_pair_typs[tmp_int].push_back(tmp_str_items[3]);
+
+                // Check for excluded triplet types
+
 #ifdef TABULATION
-		if(tmp_str_items[4] != "EXCLUDED:" && !tabulate_3B)
-		{
+                if(tmp_str_items[4] != "EXCLUDED:" && !tabulate_3B)
+                {
 #else
-		if(tmp_str_items[4] != "EXCLUDED:")
-		{
+                if(tmp_str_items[4] != "EXCLUDED:")
+                {
 #endif
-                	ncoeffs_3b[tmp_int] = stoi(tmp_str_items[7]);    
-	
-        	        get_next_line(param_file);
-        	        get_next_line(param_file);
-            
-        	        for(int i=0; i<ncoeffs_3b[tmp_int]; i++)
-        	        {
-        	            line = get_next_line(param_file);
-        	            split_line(line, tmp_str_items);
-                    
-        	            tmp_int_vec[0] = stoi(tmp_str_items[1]);
-        	            tmp_int_vec[1] = stoi(tmp_str_items[2]);
-        	            tmp_int_vec[2] = stoi(tmp_str_items[3]);
-                    
-        	            chimes_3b_powers[tmp_int].push_back(tmp_int_vec);                    
-        	            chimes_3b_params[tmp_int].push_back(stod(tmp_str_items[6]));
-                
-        	            if (rank == 0)
-        	                cout << "chimesFF: " << "\t" << chimes_3b_powers[tmp_int][i][0] << " " << chimes_3b_powers[tmp_int][i][1] << " " << chimes_3b_powers[tmp_int][i][2] << " " << chimes_3b_params[tmp_int][i] << endl;
-        	        }
-		}
-		else if (tmp_str_items[4] == "EXCLUDED:")
-        	{
-		if (rank == 0)
-            		cout << "chimesFF: \tType is excluded... skipping." << endl;
-        	}
-            }   
-            
+                    ncoeffs_3b[tmp_int] = stoi(tmp_str_items[7]);
+
+                    get_next_line(param_file);
+                    get_next_line(param_file);
+
+                    for(int i=0; i<ncoeffs_3b[tmp_int]; i++)
+                    {
+                        line = get_next_line(param_file);
+                        split_line(line, tmp_str_items);
+
+                        tmp_int_vec[0] = stoi(tmp_str_items[1]);
+                        tmp_int_vec[1] = stoi(tmp_str_items[2]);
+                        tmp_int_vec[2] = stoi(tmp_str_items[3]);
+
+                        chimes_3b_powers[tmp_int].push_back(tmp_int_vec);
+                        chimes_3b_params[tmp_int].push_back(stod(tmp_str_items[6]));
+
+                        if (rank == 0)
+                            cout << "chimesFF: " << "\t" << chimes_3b_powers[tmp_int][i][0] << " " << chimes_3b_powers[tmp_int][i][1] << " " << chimes_3b_powers[tmp_int][i][2] << " " << chimes_3b_params[tmp_int][i] << endl;
+                    }
+                }
+                else if (tmp_str_items[4] == "EXCLUDED:")
+                {
+                    if (rank == 0)
+                                cout << "chimesFF: \tType is excluded... skipping." << endl;
+                }
+            }
+
             if(line.find("TRIPMAPS:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 n_trip_maps = stoi(tmp_str_items[1]);
-                
+
                 atom_idx_trip_map.resize(n_trip_maps);
                 atom_typ_trip_map.resize(n_trip_maps);
-                
-                if (rank == 0)                
+
+                if (rank == 0)
                     cout << "chimesFF: " << "Built the following 3-body pair \"slow\" map:" << endl;
-            
+
                 for(int i=0; i<n_trip_maps; i++)
                 {
                     line = get_next_line(param_file);
                     split_line(line, tmp_str_items);
-                
+
                     atom_idx_trip_map[i] = stoi(tmp_str_items[0]);
                     atom_typ_trip_map[i] =      tmp_str_items[1];
-                
+
                     if (rank == 0)
                         cout << "chimesFF: " << "\t" << atom_idx_trip_map[i] << " " << atom_typ_trip_map[i] << endl;
-                }        
-                
+                }
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Built the following 3-body pair \"fast\" map:" << endl;
 
@@ -2368,51 +2313,51 @@ void chimesFF::read_parameters(string paramfile)
                         for(int k=0; k<natmtyps; k++)
                         {
                             // Get the trip type name for the set of atoms
-                            
+
                             tmp_str = "";
 
                             tmp_int  = get_proper_pair(atmtyps[i], atmtyps[j]);
-                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
-                
+                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                             tmp_int  = get_proper_pair(atmtyps[i], atmtyps[k]);
-                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
-                
+                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                             tmp_int  = get_proper_pair(atmtyps[j], atmtyps[k]);
-                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];            
-                                            
+                            tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                             tmp_int = get_index(atom_typ_trip_map, tmp_str);
 
                             tmp_idx = i*natmtyps*natmtyps + j*natmtyps + k;
 
                             atom_int_trip_map[ tmp_idx ] = atom_idx_trip_map[tmp_int];
-                                                        
+
                             if (rank == 0)
                                 cout << "chimesFF: " << "\t" << tmp_idx << " " << atom_int_trip_map[ tmp_idx  ]  << endl;
                         }
                     }
                 }
-            }            
+            }
         }
 
         // Set up cutoffs ... First set to match 2-body, then read special if they exist
-        
+
         int atmtyp_1,  atmtyp_2,  atmtyp_3;
         int pairtyp_1, pairtyp_2, pairtyp_3;
 
-        for(int i=0; i<ntrips; i++) 
-        {   
-            // Figure out the atom type index for each atom in the triplet type 
-                        
-            atmtyp_1 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][0]));   
-            atmtyp_2 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][1]));   
-            atmtyp_3 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][2]));  
-                        
+        for(int i=0; i<ntrips; i++)
+        {
+            // Figure out the atom type index for each atom in the triplet type
+
+            atmtyp_1 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][0]));
+            atmtyp_2 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][1]));
+            atmtyp_3 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), trip_params_atm_chems[i][2]));
+
             // Figure out the corresponding 2-body pair type
-            
+
             pairtyp_1 = atom_int_pair_map[ atmtyp_1*natmtyps + atmtyp_2 ];
             pairtyp_2 = atom_int_pair_map[ atmtyp_1*natmtyps + atmtyp_3 ];
             pairtyp_3 = atom_int_pair_map[ atmtyp_2*natmtyps + atmtyp_3 ];
-    
+
             // Set the default inner/outer cutoffs to the corresponding 2-body value
 
             chimes_3b_cutoff[i].resize(2);
@@ -2420,106 +2365,106 @@ void chimesFF::read_parameters(string paramfile)
             chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);
             chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_2][0]);
             chimes_3b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);
-            
+
             chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_1][1]);
             chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_2][1]);
-            chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);   
+            chimes_3b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);
         }
-        
+
         param_file.seekg(0);
-        
+
         int    nentries;
         double cutval;
-        
+
         found_end = false;
-        
+
         while (!found_end)
         {
             line = get_next_line(param_file);
-        
-			if(line.find("ENDFILE") != string::npos)
-                break;                
-            
+
+            if(line.find("ENDFILE") != string::npos)
+                break;
+
             if(line.find("SPECIAL 3B S_MAXIM:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Set the following special 3-body outer cutoffs: " << endl;
-                
+
                 if(tmp_str_items[3] == "ALL")
                 {
                     cutval = stod(tmp_str_items[4]);
-                                        
+
                     for(int i=0; i<ntrips; i++)
                     {
                         chimes_3b_cutoff[i][1][0] = cutval;
                         chimes_3b_cutoff[i][1][1] = cutval;
-                        chimes_3b_cutoff[i][1][2] = cutval;                    
+                        chimes_3b_cutoff[i][1][2] = cutval;
                     }
                 }
                 else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(3);
                     vector<double> cutoffval(3);
 
-    
+
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
+
                         split_line(line, tmp_str_items);
-                        
+
                         tmp_int = atom_idx_trip_map[distance(atom_typ_trip_map.begin(), find(atom_typ_trip_map.begin(), atom_typ_trip_map.end(), tmp_str_items[0]))];
 
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
                         pair_name[2] = tmp_str_items[3];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[4]);
                         cutoffval[1] = stod(tmp_str_items[5]);
                         cutoffval[2] = stod(tmp_str_items[6]);
-                        
+
                         vector<bool>   disqualified(3,false);
-                        
+
                         chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
                         chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
                         chimes_3b_cutoff[tmp_int][1][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
-                                        
+
                     }
                 }
-                
+
                 for(int i=0; i<ntrips; i++)
                     if (rank == 0)
                         cout << "chimesFF: " << "\t" << i << " " << chimes_3b_cutoff[i][1][0] << " " << chimes_3b_cutoff[i][1][1] << " " << chimes_3b_cutoff[i][1][2] << endl;
-                
+
             }
 
             if(line.find("SPECIAL 3B S_MINIM:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Set the following special 3-body inner cutoffs: " << endl;
-                
+
                 if(tmp_str_items[3] == "ALL")
                 {
                     cutval = stod(tmp_str_items[4]);
-                    
+
                     for(int i=0; i<ntrips; i++)
                     {
                         chimes_3b_cutoff[i][0][0] = cutval;
                         chimes_3b_cutoff[i][0][1] = cutval;
                         chimes_3b_cutoff[i][0][2] = cutval;
-                        
+
                     }
                 }
                 else
                 {
                     nentries = stoi(tmp_str_items[4]);
-                    
+
                     vector<string> pair_name(3);
                     vector<double> cutoffval(3);
 
@@ -2527,276 +2472,276 @@ void chimesFF::read_parameters(string paramfile)
                     for(int i=0; i<nentries; i++)
                     {
                         line = get_next_line(param_file);
-                        
+
                         split_line(line, tmp_str_items);
-                        
+
                         tmp_int = atom_idx_trip_map[distance(atom_typ_trip_map.begin(), find(atom_typ_trip_map.begin(), atom_typ_trip_map.end(), tmp_str_items[0]))];
-                        
+
                         pair_name[0] = tmp_str_items[1];
                         pair_name[1] = tmp_str_items[2];
                         pair_name[2] = tmp_str_items[3];
-                        
+
                         cutoffval[0] = stod(tmp_str_items[4]);
                         cutoffval[1] = stod(tmp_str_items[5]);
                         cutoffval[2] = stod(tmp_str_items[6]);
-                        
+
                         vector<bool>   disqualified(3,false);
-                        
+
                         chimes_3b_cutoff[tmp_int][0][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[0], disqualified) ] = cutoffval[0];
                         chimes_3b_cutoff[tmp_int][0][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[1], disqualified) ] = cutoffval[1];
                         chimes_3b_cutoff[tmp_int][0][ get_index_if(trip_params_pair_typs[tmp_int], pair_name[2], disqualified) ] = cutoffval[2];
-                
+
                     }
                 }
-                
+
                 for(int i=0; i<ntrips; i++)
                     if (rank == 0)
                         cout << "chimesFF: " << "\t" << i << " " << chimes_3b_cutoff[i][0][0] << " " << chimes_3b_cutoff[i][0][1] << " " << chimes_3b_cutoff[i][0][2] << endl;
-            }            
-        }    
+            }
+        }
     }
-    
+
     // Rewind and read the 4-body Chebyshev pair parameters
 
     if (poly_orders[2] > 0)
     {
         int nquads = 0;
         int tmp_idx;
-        
+
         // Read parameters
-        
+
         param_file.seekg(0);
-        
+
         found_end = false;
-    
-                while (!found_end)
-{
-    line = get_next_line(param_file);
 
-    if(line.find("ENDFILE") != string::npos)
-        break;
+        while (!found_end)
+        {
+            line = get_next_line(param_file);
+
+            if(line.find("ENDFILE") != string::npos)
+                break;
 #ifdef TABULATION
-        if(line.find("4B CP TABLES:") != string::npos)
-        {
-            split_line(line, tmp_str_items);
-
-            int ntab = stoi(tmp_str_items[3]);
-
-            if (rank == 0)
-                cout << "chimesFF: Will read " << ntab
-                     << " CP 1D 4B tables" << endl;
-
-            tabulate_4B_cp = true;
-
-            for (int t=0; t<ntab; t++)
+            if(line.find("4B CP TABLES:") != string::npos)
             {
-                line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
 
-                if (tmp_str_items.size() != 8)
+                int ntab = stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    cout << "chimesFF: Will read " << ntab
+                         << " CP 1D 4B tables" << endl;
+
+                tabulate_4B_cp = true;
+
+                for (int t=0; t<ntab; t++)
                 {
-                    cout << "ERROR: Expected CP table line format:" << endl;
-                    cout << "       <quadidx> <slot0.dat> <slot1.dat> <slot2.dat> <slot3.dat> <slot4.dat> <slot5.dat> <meta>" << endl;
-                    cout << "Line: " << line << endl;
-                    exit(0);
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 8)
+                    {
+                        cout << "ERROR: Expected CP table line format:" << endl;
+                        cout << "       <quadidx> <slot0.dat> <slot1.dat> <slot2.dat> <slot3.dat> <slot4.dat> <slot5.dat> <meta>" << endl;
+                        cout << "Line: " << line << endl;
+                        exit(0);
+                    }
+
+                    int quadidx = stoi(tmp_str_items[0]);
+
+                    string slotfile[6];
+                    for (int s=0; s<6; s++)
+                        slotfile[s] = join_path_chimes(param_file_path, tmp_str_items[1+s]);
+
+                    string metafile = join_path_chimes(param_file_path, tmp_str_items[7]);
+
+                    read_4B_cp_meta(metafile, quadidx);
+
+                    for (int s=0; s<6; s++)
+                        read_4B_cp_tab(slotfile[s], quadidx, s);
                 }
 
-                int quadidx = stoi(tmp_str_items[0]);
-
-                string slotfile[6];
-                for (int s=0; s<6; s++)
-                    slotfile[s] = join_path_chimes(param_file_path, tmp_str_items[1+s]);
-
-                string metafile = join_path_chimes(param_file_path, tmp_str_items[7]);
-
-                read_4B_cp_meta(metafile, quadidx);
-
-                for (int s=0; s<6; s++)
-                    read_4B_cp_tab(slotfile[s], quadidx, s);
+                continue;
             }
-
-            continue;
-        }
-#endif
-    #ifdef TABULATION
-        if(line.find("4B COEFF TABLES:") != string::npos)
-        {
-            split_line(line, tmp_str_items);
-
-            int ntab = stoi(tmp_str_items[3]);
-
-            if (rank == 0)
-                cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
-
-            tabulate_4B_coeff = true;
-
-            for (int t=0; t<ntab; t++)
-            {
-                line = get_next_line(param_file);
-                split_line(line, tmp_str_items);
-
-                if (tmp_str_items.size() != 3)
-                {
-                    cout << "ERROR: Expected line format:" << endl;
-                    cout << "       <quadidx> <datafile> <metafile>" << endl;
-                    cout << "Line: " << line << endl;
-                    exit(0);
-                }
-
-                int quadidx = stoi(tmp_str_items[0]);
-                string datafile = param_file_path + "/" + tmp_str_items[1];
-                string metafile = param_file_path + "/" + tmp_str_items[2];
-
-                read_4B_coeff_meta(metafile, quadidx);
-                read_4B_coeff_tab (datafile, quadidx);
-            }
-            continue;
-        }
-    #endif
-
-
-#ifdef TABULATION
-        if (line.find("4B CP DIRECT:") != std::string::npos)
-        {
-            split_line(line, tmp_str_items);
-
-            int ntab = std::stoi(tmp_str_items[3]);
-
-            if (rank == 0)
-                std::cout << "chimesFF: Will read " << ntab
-                          << " exact CP 4B factor files" << std::endl;
-
-            tabulate_4B_cp_direct = true;
-
-            for (int t = 0; t < ntab; t++)
-            {
-                line = get_next_line(param_file);
-                split_line(line, tmp_str_items);
-
-                if (tmp_str_items.size() != 2)
-                {
-                    std::cout << "ERROR: Expected CP-direct line format:" << std::endl;
-                    std::cout << "       <quadidx> <factorfile>" << std::endl;
-                    std::cout << "Line: " << line << std::endl;
-                    exit(0);
-                }
-
-                int quadidx = std::stoi(tmp_str_items[0]);
-                std::string factorfile = join_path_chimes(param_file_path, tmp_str_items[1]);
-
-                read_4B_cp_direct_file(factorfile, quadidx);
-            }
-
-            continue;
-        }
-#endif
-        #ifdef TABULATION
-        if(line.find("4B SVD3X3 TABLES:") != string::npos)
-        {
-            split_line(line, tmp_str_items);
-
-            int ntab = stoi(tmp_str_items[3]);
-
-            if (rank == 0)
-                cout << "chimesFF: Will read " << ntab
-                     << " SVD 3|3 4B tables" << endl;
-
-            tabulate_4B_svd3x3 = true;
-
-            for (int t=0; t<ntab; t++)
-            {
-                line = get_next_line(param_file);
-                split_line(line, tmp_str_items);
-
-                if (tmp_str_items.size() != 4)
-                {
-                    cout << "ERROR: Expected SVD3X3 table line format:" << endl;
-                    cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
-                    cout << "Line: " << line << endl;
-                    exit(0);
-                }
-
-                int quadidx = stoi(tmp_str_items[0]);
-
-                string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
-                string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
-                string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
-
-                read_4B_svd3x3_meta(metafile, quadidx);
-                read_4B_svd3x3_tab(leftfile,  quadidx, true);
-                read_4B_svd3x3_tab(rightfile, quadidx, false);
-            }
-
-            continue;
-        }
 #endif
 #ifdef TABULATION
-        if(line.find("4B SVD4X2 TABLES:") != string::npos)
-        {
-            split_line(line, tmp_str_items);
-
-            int ntab = stoi(tmp_str_items[3]);
-
-            if (rank == 0)
-                cout << "chimesFF: Will read " << ntab
-                     << " SVD 4|2 4B tables" << endl;
-
-            tabulate_4B_svd4x2 = true;
-
-            for (int t=0; t<ntab; t++)
+            if(line.find("4B COEFF TABLES:") != string::npos)
             {
-                line = get_next_line(param_file);
                 split_line(line, tmp_str_items);
 
-                if (tmp_str_items.size() != 4)
+                int ntab = stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    cout << "chimesFF: Will read " << ntab << " contracted 4B coefficient tables" << endl;
+
+                tabulate_4B_coeff = true;
+
+                for (int t=0; t<ntab; t++)
                 {
-                    cout << "ERROR: Expected SVD4X2 table line format:" << endl;
-                    cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
-                    cout << "Line: " << line << endl;
-                    exit(0);
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 3)
+                    {
+                        cout << "ERROR: Expected line format:" << endl;
+                        cout << "       <quadidx> <datafile> <metafile>" << endl;
+                        cout << "Line: " << line << endl;
+                        exit(0);
+                    }
+
+                    int quadidx = stoi(tmp_str_items[0]);
+                    string datafile = param_file_path + "/" + tmp_str_items[1];
+                    string metafile = param_file_path + "/" + tmp_str_items[2];
+
+                    read_4B_coeff_meta(metafile, quadidx);
+                    read_4B_coeff_tab (datafile, quadidx);
                 }
-
-                int quadidx = stoi(tmp_str_items[0]);
-
-                string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
-                string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
-                string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
-
-                read_4B_svd4x2_meta(metafile, quadidx);
-                read_4B_svd4x2_tab(leftfile,  quadidx, true);
-                read_4B_svd4x2_tab(rightfile, quadidx, false);
+                continue;
             }
-
-            continue;
-        }
 #endif
 
-			if(line.find("ENDFILE") != string::npos)
-                break;    
-            
+
+#ifdef TABULATION
+            if (line.find("4B CP DIRECT:") != std::string::npos)
+            {
+                split_line(line, tmp_str_items);
+
+                int ntab = std::stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    std::cout << "chimesFF: Will read " << ntab
+                              << " exact CP 4B factor files" << std::endl;
+
+                tabulate_4B_cp_direct = true;
+
+                for (int t = 0; t < ntab; t++)
+                {
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 2)
+                    {
+                        std::cout << "ERROR: Expected CP-direct line format:" << std::endl;
+                        std::cout << "       <quadidx> <factorfile>" << std::endl;
+                        std::cout << "Line: " << line << std::endl;
+                        exit(0);
+                    }
+
+                    int quadidx = std::stoi(tmp_str_items[0]);
+                    std::string factorfile = join_path_chimes(param_file_path, tmp_str_items[1]);
+
+                    read_4B_cp_direct_file(factorfile, quadidx);
+                }
+
+                continue;
+            }
+#endif
+#ifdef TABULATION
+            if(line.find("4B SVD3X3 TABLES:") != string::npos)
+            {
+                split_line(line, tmp_str_items);
+
+                int ntab = stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    cout << "chimesFF: Will read " << ntab
+                         << " SVD 3|3 4B tables" << endl;
+
+                tabulate_4B_svd3x3 = true;
+
+                for (int t=0; t<ntab; t++)
+                {
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 4)
+                    {
+                        cout << "ERROR: Expected SVD3X3 table line format:" << endl;
+                        cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
+                        cout << "Line: " << line << endl;
+                        exit(0);
+                    }
+
+                    int quadidx = stoi(tmp_str_items[0]);
+
+                    string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
+                    string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
+                    string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
+
+                    read_4B_svd3x3_meta(metafile, quadidx);
+                    read_4B_svd3x3_tab(leftfile,  quadidx, true);
+                    read_4B_svd3x3_tab(rightfile, quadidx, false);
+                }
+
+                continue;
+            }
+#endif
+#ifdef TABULATION
+            if(line.find("4B SVD4X2 TABLES:") != string::npos)
+            {
+                split_line(line, tmp_str_items);
+
+                int ntab = stoi(tmp_str_items[3]);
+
+                if (rank == 0)
+                    cout << "chimesFF: Will read " << ntab
+                         << " SVD 4|2 4B tables" << endl;
+
+                tabulate_4B_svd4x2 = true;
+
+                for (int t=0; t<ntab; t++)
+                {
+                    line = get_next_line(param_file);
+                    split_line(line, tmp_str_items);
+
+                    if (tmp_str_items.size() != 4)
+                    {
+                        cout << "ERROR: Expected SVD4X2 table line format:" << endl;
+                        cout << "       <quadidx> <left.dat> <right.dat> <meta>" << endl;
+                        cout << "Line: " << line << endl;
+                        exit(0);
+                    }
+
+                    int quadidx = stoi(tmp_str_items[0]);
+
+                    string leftfile  = join_path_chimes(param_file_path, tmp_str_items[1]);
+                    string rightfile = join_path_chimes(param_file_path, tmp_str_items[2]);
+                    string metafile  = join_path_chimes(param_file_path, tmp_str_items[3]);
+
+                    read_4B_svd4x2_meta(metafile, quadidx);
+                    read_4B_svd4x2_tab(leftfile,  quadidx, true);
+                    read_4B_svd4x2_tab(rightfile, quadidx, false);
+                }
+
+                continue;
+            }
+#endif
+
+            if(line.find("ENDFILE") != string::npos)
+                break;
+
             if(line.find("ATOM PAIR QUADRUPLETS:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 nquads = stoi(tmp_str_items[3]);
-                                
-                ncoeffs_4b      .resize(nquads);                                 
-                chimes_4b_powers.resize(nquads);                                              
-                chimes_4b_params.resize(nquads);                       
-                chimes_4b_cutoff.resize(nquads);                            
-                
-                quad_params_atm_chems.resize(nquads);                
+
+                ncoeffs_4b      .resize(nquads);
+                chimes_4b_powers.resize(nquads);
+                chimes_4b_params.resize(nquads);
+                chimes_4b_cutoff.resize(nquads);
+
+                quad_params_atm_chems.resize(nquads);
                 quad_params_pair_typs.resize(nquads);
             }
-            
+
             if(line.find("QUADRUPLETYPE PARAMS:") != string::npos)
-            {            
+            {
                 line = get_next_line(param_file);
-                
+
                 split_line(line, tmp_str_items);
-                
+
                 tmp_int = stoi(tmp_str_items[1]);
-                
+
                 quad_params_atm_chems[tmp_int].push_back(tmp_str_items[3]);
                 quad_params_atm_chems[tmp_int].push_back(tmp_str_items[4]);
                 quad_params_atm_chems[tmp_int].push_back(tmp_str_items[5]);
@@ -2804,92 +2749,92 @@ void chimesFF::read_parameters(string paramfile)
 
                 if (rank == 0)
                     cout << "chimesFF: " << "Read 4B parameters for quadruplets: " << tmp_int << " " << quad_params_atm_chems[tmp_int][0] << " " << quad_params_atm_chems[tmp_int][1] << " " << quad_params_atm_chems[tmp_int][2] << " " << quad_params_atm_chems[tmp_int][3]<< endl;
-                
+
                 line = get_next_line(param_file);
-                
+
                 split_line(line, tmp_str_items);
-            
+
                 quad_params_pair_typs[tmp_int].push_back(tmp_str_items[1]);
                 quad_params_pair_typs[tmp_int].push_back(tmp_str_items[2]);
                 quad_params_pair_typs[tmp_int].push_back(tmp_str_items[3]);
                 quad_params_pair_typs[tmp_int].push_back(tmp_str_items[4]);
                 quad_params_pair_typs[tmp_int].push_back(tmp_str_items[5]);
-                quad_params_pair_typs[tmp_int].push_back(tmp_str_items[6]);   
-		
-		// Check for excluded triplet types
-	
-		if(tmp_str_items[7] != "EXCLUDED:")
-		{		                         
-	                ncoeffs_4b[tmp_int] = stoi(tmp_str_items[10]);    
+                quad_params_pair_typs[tmp_int].push_back(tmp_str_items[6]);
 
-	                get_next_line(param_file);
-	                get_next_line(param_file);
-            
-	                vector<int> tmp_int_vec(6);
-                
-	                for(int i=0; i<ncoeffs_4b[tmp_int]; i++)
-	                {                
-	                    line = get_next_line(param_file);
-	                    split_line(line, tmp_str_items);
-                    
-	                    tmp_int_vec[0] = stoi(tmp_str_items[1]);
-	                    tmp_int_vec[1] = stoi(tmp_str_items[2]);
-	                    tmp_int_vec[2] = stoi(tmp_str_items[3]);
-	                    tmp_int_vec[3] = stoi(tmp_str_items[4]);
-	                    tmp_int_vec[4] = stoi(tmp_str_items[5]);
-	                    tmp_int_vec[5] = stoi(tmp_str_items[6]);
-                    
-	                    chimes_4b_powers[tmp_int].push_back(tmp_int_vec);                 
-                    
-	                    chimes_4b_params[tmp_int].push_back(stod(tmp_str_items[9]));
-                
-	                    if (rank == 0)
-                        	cout << "chimesFF: " << "\t" << 
-                        	chimes_4b_powers[tmp_int][i][0] << " " << 
-                	        chimes_4b_powers[tmp_int][i][1] << " " << 
-                	        chimes_4b_powers[tmp_int][i][2] << " " << 
-                	        chimes_4b_powers[tmp_int][i][3] << " " << 
-                	        chimes_4b_powers[tmp_int][i][4] << " " << 
-                	        chimes_4b_powers[tmp_int][i][5] << " " <<                                
-                	        chimes_4b_params[tmp_int][i] << endl;
-                	}
-		}
-		else
-		{
-			if (rank == 0)
-				cout << "chimesFF: \tType is excluded... skipping." << endl;		
-		}
-            }    
-            
+                // Check for excluded triplet types
+
+                if(tmp_str_items[7] != "EXCLUDED:")
+                {
+                    ncoeffs_4b[tmp_int] = stoi(tmp_str_items[10]);
+
+                    get_next_line(param_file);
+                    get_next_line(param_file);
+
+                    vector<int> tmp_int_vec(6);
+
+                    for(int i=0; i<ncoeffs_4b[tmp_int]; i++)
+                    {
+                        line = get_next_line(param_file);
+                        split_line(line, tmp_str_items);
+
+                        tmp_int_vec[0] = stoi(tmp_str_items[1]);
+                        tmp_int_vec[1] = stoi(tmp_str_items[2]);
+                        tmp_int_vec[2] = stoi(tmp_str_items[3]);
+                        tmp_int_vec[3] = stoi(tmp_str_items[4]);
+                        tmp_int_vec[4] = stoi(tmp_str_items[5]);
+                        tmp_int_vec[5] = stoi(tmp_str_items[6]);
+
+                        chimes_4b_powers[tmp_int].push_back(tmp_int_vec);
+
+                        chimes_4b_params[tmp_int].push_back(stod(tmp_str_items[9]));
+
+                        if (rank == 0)
+                            cout << "chimesFF: " << "\t" <<
+                            chimes_4b_powers[tmp_int][i][0] << " " <<
+                            chimes_4b_powers[tmp_int][i][1] << " " <<
+                            chimes_4b_powers[tmp_int][i][2] << " " <<
+                            chimes_4b_powers[tmp_int][i][3] << " " <<
+                            chimes_4b_powers[tmp_int][i][4] << " " <<
+                            chimes_4b_powers[tmp_int][i][5] << " " <<
+                            chimes_4b_params[tmp_int][i] << endl;
+                    }
+                }
+                else
+                {
+                    if (rank == 0)
+                        cout << "chimesFF: \tType is excluded... skipping." << endl;
+                }
+            }
+
             if(line.find("QUADMAPS:") != string::npos)
             {
                 split_line(line, tmp_str_items);
-                
+
                 n_quad_maps = stoi(tmp_str_items[1]);
-                
+
                 atom_idx_quad_map.resize(n_quad_maps);
                 atom_typ_quad_map.resize(n_quad_maps);
-                    
-                if (rank == 0)            
+
+                if (rank == 0)
                     cout << "chimesFF: " << "Built the following 4-body pair \"slow\" map:" << endl;
-            
+
                 for(int i=0; i<n_quad_maps; i++)
                 {
                     line = get_next_line(param_file);
                     split_line(line, tmp_str_items);
-                
+
                     atom_idx_quad_map[i] = stoi(tmp_str_items[0]);
                     atom_typ_quad_map[i] =      tmp_str_items[1];
-                
+
                     if (rank == 0)
                         cout << "chimesFF: " << "\t" << atom_idx_quad_map[i] << " " << atom_typ_quad_map[i] << endl;
-                }        
-                
+                }
+
                 if (rank == 0)
                     cout << "chimesFF: " << "Built the following 4-body pair \"fast\" map:" << endl;
 
                 atom_int_quad_map.resize(natmtyps*natmtyps*natmtyps*natmtyps);
-                
+
                 for(int i=0; i<natmtyps; i++)
                 {
                     for (int j=0; j<natmtyps; j++)
@@ -2897,32 +2842,32 @@ void chimesFF::read_parameters(string paramfile)
                         for(int k=0; k<natmtyps; k++)
                         {
                             for(int l=0; l<natmtyps; l++)
-                            {                            
+                            {
                                 // Get the quad type name for the set of atoms
-                            
+
                                 tmp_str = "";
-                                
-                                
+
+
                                 tmp_int  = get_proper_pair(atmtyps[i], atmtyps[j]);
-                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
+                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
 
                                 tmp_int  = get_proper_pair(atmtyps[i], atmtyps[k]);
-                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
-                
+                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                                 tmp_int  = get_proper_pair(atmtyps[i], atmtyps[l]);
-                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
-                            
+                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                                 tmp_int  = get_proper_pair(atmtyps[j], atmtyps[k]);
-                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];    
-                            
+                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
+
                                 tmp_int  = get_proper_pair(atmtyps[j], atmtyps[l]);
                                 tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
-                            
+
                                 tmp_int  = get_proper_pair(atmtyps[k], atmtyps[l]);
-                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];                                                                                                
+                                tmp_str += pair_params_atm_chem_1[tmp_int] + pair_params_atm_chem_2[tmp_int];
 
                                 tmp_int = get_index(atom_typ_quad_map, tmp_str);
-                            
+
                                 tmp_idx = i*natmtyps*natmtyps*natmtyps + j*natmtyps*natmtyps + k*natmtyps + l;
 
                                 atom_int_quad_map[ tmp_idx ] = atom_idx_quad_map[tmp_int];
@@ -2933,17 +2878,16 @@ void chimesFF::read_parameters(string paramfile)
                         }
                     }
                 }
-            }            
+            }
         }
-        
+
         // Set up cutoffs ... First set to match 2-body, then read special if they exist
         int atmtyp_1,  atmtyp_2,  atmtyp_3,  atmtyp_4;
         int pairtyp_1, pairtyp_2, pairtyp_3, pairtyp_4, pairtyp_5, pairtyp_6;
 
-        for(int i=0; i<nquads; i++) 
+        for(int i=0; i<nquads; i++)
         {
-            if ((int)quad_params_atm_chems[i].size() < 4 ||
-                (int)quad_params_pair_typs[i].size() < 6)
+            if ((int)quad_params_atm_chems[i].size() < 4 || (int)quad_params_pair_typs[i].size() < 6)
             {
                 if (rank == 0)
                     cout << "WARNING: Skipping incomplete quad type " << i
@@ -2951,7 +2895,7 @@ void chimesFF::read_parameters(string paramfile)
                 continue;
             }
 
-            // Figure out the atom type index for each atom in the quadruplet type 
+            // Figure out the atom type index for each atom in the quadruplet type
             atmtyp_1 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][0]));
             atmtyp_2 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][1]));
             atmtyp_3 = distance(atmtyps.begin(), find(atmtyps.begin(), atmtyps.end(), quad_params_atm_chems[i][2]));
@@ -2965,7 +2909,7 @@ void chimesFF::read_parameters(string paramfile)
             pairtyp_5 = atom_int_pair_map[ atmtyp_2*natmtyps + atmtyp_4 ];
             pairtyp_6 = atom_int_pair_map[ atmtyp_3*natmtyps + atmtyp_4 ];
 
-            // Set the default inner/outer cutoffs to the corresponding 2-body value                    
+            // Set the default inner/outer cutoffs to the corresponding 2-body value
             chimes_4b_cutoff[i].resize(2);
 
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_1][0]);
@@ -2973,30 +2917,30 @@ void chimesFF::read_parameters(string paramfile)
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_3][0]);
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_4][0]);
             chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_5][0]);
-            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_6][0]);              
+            chimes_4b_cutoff[i][0].push_back(chimes_2b_cutoff[pairtyp_6][0]);
 
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_1][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_2][1]);
-            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);          
+            chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_3][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_4][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_5][1]);
             chimes_4b_cutoff[i][1].push_back(chimes_2b_cutoff[pairtyp_6][1]);
         }
-        
+
         param_file.seekg(0);
-        
+
         int    nentries;
         double cutval;
-        
+
         found_end = false;
-        
+
         while (!found_end)
         {
-			line = get_next_line(param_file);
-        
-			if(line.find("ENDFILE") != string::npos)
-                break;                
-            
+            line = get_next_line(param_file);
+
+            if(line.find("ENDFILE") != string::npos)
+                break;
+
             if(line.find("SPECIAL 4B S_MAXIM:") != string::npos)
             {
                 split_line(line, tmp_str_items);
@@ -3010,8 +2954,7 @@ void chimesFF::read_parameters(string paramfile)
 
                     for(int i=0; i<nquads; i++)
                     {
-                        if ((int)chimes_4b_cutoff[i].size() < 2 ||
-                            (int)chimes_4b_cutoff[i][1].size() < 6)
+                        if ((int)chimes_4b_cutoff[i].size() < 2 || (int)chimes_4b_cutoff[i][1].size() < 6)
                         {
                             if (rank == 0)
                                 cout << "WARNING: Skipping ALL special 4B S_MAXIM for incomplete quad type " << i << endl;
@@ -3055,9 +2998,7 @@ void chimesFF::read_parameters(string paramfile)
                             continue;
                         }
 
-                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 ||
-                            (int)chimes_4b_cutoff[tmp_int].size() < 2 ||
-                            (int)chimes_4b_cutoff[tmp_int][1].size() < 6)
+                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 || (int)chimes_4b_cutoff[tmp_int].size() < 2 || (int)chimes_4b_cutoff[tmp_int][1].size() < 6)
                         {
                             if (rank == 0)
                                 cout << "WARNING: Skipping SPECIAL 4B S_MAXIM for incomplete quad type " << tmp_int << endl;
@@ -3091,8 +3032,7 @@ void chimesFF::read_parameters(string paramfile)
 
                 for(int i=0; i<nquads; i++)
                 {
-                    if ((int)chimes_4b_cutoff[i].size() < 2 ||
-                        (int)chimes_4b_cutoff[i][1].size() < 6)
+                    if ((int)chimes_4b_cutoff[i].size() < 2 || (int)chimes_4b_cutoff[i][1].size() < 6)
                         continue;
 
                     if (rank == 0)
@@ -3119,8 +3059,7 @@ void chimesFF::read_parameters(string paramfile)
 
                     for(int i=0; i<nquads; i++)
                     {
-                        if ((int)chimes_4b_cutoff[i].size() < 2 ||
-                            (int)chimes_4b_cutoff[i][0].size() < 6)
+                        if ((int)chimes_4b_cutoff[i].size() < 2 || (int)chimes_4b_cutoff[i][0].size() < 6)
                         {
                             if (rank == 0)
                                 cout << "WARNING: Skipping ALL special 4B S_MINIM for incomplete quad type " << i << endl;
@@ -3144,8 +3083,7 @@ void chimesFF::read_parameters(string paramfile)
 
                     for(int i=0; i<nquads; i++)
                     {
-                        if ((int)chimes_4b_cutoff[i].size() >= 2 &&
-                            (int)chimes_4b_cutoff[i][0].size() >= 6)
+                        if ((int)chimes_4b_cutoff[i].size() >= 2 && (int)chimes_4b_cutoff[i][0].size() >= 6)
                         {
                             chimes_4b_cutoff[i][0][0] = -1.0;
                             chimes_4b_cutoff[i][0][1] = -1.0;
@@ -3178,9 +3116,7 @@ void chimesFF::read_parameters(string paramfile)
                             continue;
                         }
 
-                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 ||
-                            (int)chimes_4b_cutoff[tmp_int].size() < 2 ||
-                            (int)chimes_4b_cutoff[tmp_int][0].size() < 6)
+                        if ((int)quad_params_pair_typs[tmp_int].size() < 6 || (int)chimes_4b_cutoff[tmp_int].size() < 2 || (int)chimes_4b_cutoff[tmp_int][0].size() < 6)
                         {
                             if (rank == 0)
                                 cout << "WARNING: Skipping SPECIAL 4B S_MINIM for incomplete quad type " << tmp_int << endl;
@@ -3214,8 +3150,7 @@ void chimesFF::read_parameters(string paramfile)
 
                 for(int i=0; i<nquads; i++)
                 {
-                    if ((int)chimes_4b_cutoff[i].size() < 2 ||
-                        (int)chimes_4b_cutoff[i][0].size() < 6)
+                    if ((int)chimes_4b_cutoff[i].size() < 2 || (int)chimes_4b_cutoff[i][0].size() < 6)
                         continue;
 
                     if (rank == 0)
@@ -3227,22 +3162,59 @@ void chimesFF::read_parameters(string paramfile)
                             << chimes_4b_cutoff[i][0][4] << " "
                             << chimes_4b_cutoff[i][0][5] << endl;
                 }
-            }      
-        }    
+            }
+        }
     }
-    
-    param_file.close();    
+
+#ifdef TABULATION
+    // Optional CP 1D 3B tables (see chimesFF.h):
+    //     3B CP TABLES: <n>
+    //     <tripidx> <table file>          (one line per triplet type)
+    param_file.clear();
+    param_file.seekg(0);
+    while (true)
+    {
+        line = get_next_line(param_file);
+        if (!param_file.good() || line.find("ENDFILE") != string::npos)
+            break;
+
+        if (split_line(line, tmp_str_items) >= 4 && tmp_str_items[0] == "3B" && tmp_str_items[1] == "CP" && tmp_str_items[2] == "TABLES:")
+        {
+            const int ntab = stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab << " CP 1D 3B tables" << endl;
+
+            tabulate_3B_cp = true;
+
+            for (int t = 0; t < ntab; t++)
+            {
+                line = get_next_line(param_file);
+                if (split_line(line, tmp_str_items) != 2)
+                {
+                    cout << "ERROR: Expected 3B CP table line format: <tripidx> <table file>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+                read_3B_cp_file(join_path_chimes(param_file_path, tmp_str_items[1]), stoi(tmp_str_items[0]));
+            }
+            continue;
+        }
+    }
+#endif
+
+    param_file.close();
 }
 
 void chimesFF::set_polys_out_of_range(vector<double> &Tn, vector<double> &Tnd, double dx, double x, int poly_order, double inner_cutoff, double exprlen, double dx_dr)
 {
     //  Sets the value of the Chebyshev polynomials (Tn) and their derivatives (Tnd) when dx is < inner_cutoff.
     //  Tnd is the derivative with respect to the interatomic distance, not the transformed distance (x).
-    //	
+    //
     //  The derivative Tnd is continuously set to zero inside the cutoff.
     //  The exponential smoothing distance is set to ChimesFF::inner_smooth_distance.
     //  x, exprlen, and dx_dr are evaluated at the inner cutoff.
-    //	
+    //
     //  dx is the pair distance, which is assumed to be less than inner_cutoff.
     Tn[0] = 1.0;
     Tn[1] = x;
@@ -3251,30 +3223,30 @@ void chimesFF::set_polys_out_of_range(vector<double> &Tn, vector<double> &Tnd, d
 
     Tnd[0] = 1.0;
     Tnd[1] = 2.0 * x;
-    
+
     // Use recursion to set up the higher n-value Tn and Tnd's
-    for ( int i = 2; i <= poly_order; i++ ) 
+    for ( int i = 2; i <= poly_order; i++ )
     {
         Tn[i]  = 2.0 * x *  Tn[i-1] -  Tn[i-2];
         Tnd[i] = 2.0 * x * Tnd[i-1] - Tnd[i-2];
     }
-    
+
     // Now multiply by n to convert Tnd's to actual derivatives of Tn
 
-    for ( int i = poly_order; i >= 1; i-- ) 
+    for ( int i = poly_order; i >= 1; i-- )
         Tnd[i] = i * dx_dr * Tnd[i-1];
 
     Tnd[0] = 0.0;
 
     // Exponential damping of the derivative.
     double damp_fac = exp( (dx-inner_cutoff) / inner_smooth_distance ) ;
-      
+
     // Correct Tn outside of the range using the damping factor.
     for ( int i = 0 ; i <= poly_order ; i++ )
     {
         Tn[i]  += inner_smooth_distance * (damp_fac-1.0)  * Tnd[i] ;
         Tnd[i] *= damp_fac ;
-    }     
+    }
 }
 
 inline double chimesFF::dr2_3B(const double *dr2, int i, int j, int k, int l)
@@ -3305,24 +3277,24 @@ void chimesFF::compute_1B(const int typ_idx, double & energy )
     energy += energy_offsets[typ_idx];
 }
 
-// Overload for calls from LAMMPS                 
+// Overload for calls from LAMMPS
 void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vector<int> typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes2BTmp &tmp)
-{              
+{
     double dummy_force_scalar;
 #ifdef FINGERPRINT
     vector<vector<double>> dummy_clusters_2b;
     bool dummy_fingerprint = false;
 #endif
     compute_2B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
-                #ifdef FINGERPRINT
+#ifdef FINGERPRINT
                     , dummy_clusters_2b, dummy_fingerprint
-                #endif
-                );                                                               
+#endif
+                );
 }
 void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vector<int> typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes2BTmp &tmp, double & force_scalar_in
-                            #ifdef FINGERPRINT
+#ifdef FINGERPRINT
                                 , vector<vector<double>> & clusters_2b, bool fingerprint
-                            #endif
+#endif
                             )
 {
     // Compute 2b (input: 2 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
@@ -3330,31 +3302,31 @@ void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vect
     // Input parameters:
     //
     // dx: Scalar (pair distance)
-    // dr: 1d-Array (pair distance: [x, y, and z-component]) 
+    // dr: 1d-Array (pair distance: [x, y, and z-component])
     // Force: [natoms in interaction set][x,y, and z-component] *note
     // Stress [sxx, sxy, sxz, syy, syz, szz]  *note
     // Energy: Scalar; energy for interaction set
     // Tmp: Temporary storage for calculation.
-    
+
     // Assumes atom indices start from zero
     // Assumes distances are atom_2 - atom_1
     //
     // *note: force is a packed array of coordinates.
 
-    int     pair_idx;    
+    int     pair_idx;
     double  fcut;
     double  fcutderiv;
 
     // tmp.resize(poly_orders[0]+1) ;
-    
+
     // Use references for readability.
     vector<double> &Tn = tmp.Tn ;
     vector<double> &Tnd = tmp.Tnd ;
-    
+
     pair_idx = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
 
     if (dx >= chimes_2b_cutoff[pair_idx][1])
-        return;    
+        return;
 
 #ifdef FINGERPRINT
     if (fingerprint) {
@@ -3367,51 +3339,51 @@ void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vect
     }
 #endif
 
-    set_cheby_polys(Tn, Tnd, dx, morse_var[pair_idx], chimes_2b_cutoff[pair_idx][0], chimes_2b_cutoff[pair_idx][1], poly_orders[0]);  
+    set_cheby_polys(Tn, Tnd, dx, morse_var[pair_idx], chimes_2b_cutoff[pair_idx][0], chimes_2b_cutoff[pair_idx][1], poly_orders[0]);
 
     get_fcut(dx, chimes_2b_cutoff[pair_idx][1], fcut, fcutderiv);
 
     double dx_inv = ( dx > 0.0 ) ? 1.0 / dx : 1e20 ;
-    
+
     for(int coeffs=0; coeffs<ncoeffs_2b[pair_idx]; coeffs++)
     {
-        double coeff_val = chimes_2b_params[pair_idx][coeffs];        
-        
-        energy += coeff_val * fcut * Tn[ chimes_2b_pows[pair_idx][coeffs]+1 ];
-                                                
-        double deriv = fcut * Tnd[ chimes_2b_pows[pair_idx][coeffs]+1 ]  + fcutderiv * Tn[ chimes_2b_pows[pair_idx][coeffs]+1 ];    
+        double coeff_val = chimes_2b_params[pair_idx][coeffs];
 
-        double force_scalar = coeff_val * deriv * dx_inv ; 
+        energy += coeff_val * fcut * Tn[ chimes_2b_pows[pair_idx][coeffs]+1 ];
+
+        double deriv = fcut * Tnd[ chimes_2b_pows[pair_idx][coeffs]+1 ]  + fcutderiv * Tn[ chimes_2b_pows[pair_idx][coeffs]+1 ];
+
+        double force_scalar = coeff_val * deriv * dx_inv ;
 
         force[0*CHDIM+0] += force_scalar * dr[0];
         force[0*CHDIM+1] += force_scalar * dr[1];
         force[0*CHDIM+2] += force_scalar * dr[2];
-        
+
         force[1*CHDIM+0] -= force_scalar * dr[0];
         force[1*CHDIM+1] -= force_scalar * dr[1];
         force[1*CHDIM+2] -= force_scalar * dr[2];
-        
+
         // xx xy xz yy yz zz
         // 0  1  2  3  4  5
-        
+
         // xx xy xz yx yy yz zx zy zz
         // 0  1  2  3  4  5  6  7  8
         // *           *           *
-        
+
         stress[0] -= force_scalar * dr[0] * dr[0]; // xx tensor component
-        stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component 
+        stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component
         stress[2] -= force_scalar * dr[0] * dr[2]; // xz tensor component
         stress[3] -= force_scalar * dr[1] * dr[1]; // yy tensor component
         stress[4] -= force_scalar * dr[1] * dr[2]; // yz tensor component
         stress[5] -= force_scalar * dr[2] * dr[2]; // zz tensor component
-            
+
     }
 
     double E_penalty = 0.0 ;
     double force_scalar ;
-    get_penalty(dx, pair_idx, E_penalty , force_scalar); 
+    get_penalty(dx, pair_idx, E_penalty , force_scalar);
 
-    if ( E_penalty > 0.0 ) 
+    if ( E_penalty > 0.0 )
     {
         energy += E_penalty;
 
@@ -3421,28 +3393,28 @@ void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vect
         force[0*CHDIM+0] += force_scalar * dr[0];
         force[0*CHDIM+1] += force_scalar * dr[1];
         force[0*CHDIM+2] += force_scalar * dr[2];
-        
+
         force[1*CHDIM+0] -= force_scalar * dr[0];
         force[1*CHDIM+1] -= force_scalar * dr[1];
         force[1*CHDIM+2] -= force_scalar * dr[2];
 
         // Update stress according to penalty force. (LEF) 07/30/21
         stress[0] -= force_scalar  * dr[0] * dr[0]; // xx tensor component
-        stress[1] -= force_scalar  * dr[0] * dr[1]; // xy tensor component 
+        stress[1] -= force_scalar  * dr[0] * dr[1]; // xy tensor component
         stress[2] -= force_scalar  * dr[0] * dr[2]; // xz tensor component
         stress[3] -= force_scalar  * dr[1] * dr[1]; // yy tensor component
         stress[4] -= force_scalar  * dr[1] * dr[2]; // yz tensor component
         stress[5] -= force_scalar  * dr[2] * dr[2]; // zz tensor component
 
     }
-    
+
     force_scalar_in = force_scalar;
 }
 #ifdef TABULATION
 void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const vector<int> typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes2BTmp &tmp)
-{              
+{
     double dummy_force_scalar;
-    compute_2B_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);                                                               
+    compute_2B_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const vector<int> typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes2BTmp &tmp, double & force_scalar_in)
 {
@@ -3451,18 +3423,18 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
     // Input parameters:
     //
     // dx: Scalar (pair distance)
-    // dr: 1d-Array (pair distance: [x, y, and z-component]) 
+    // dr: 1d-Array (pair distance: [x, y, and z-component])
     // Force: [natoms in interaction set][x,y, and z-component] *note
     // Stress [sxx, sxy, sxz, syy, syz, szz]  *note
     // Energy: Scalar; energy for interaction set
     // Tmp: Temporary storage for calculation.
-    
+
     // Assumes atom indices start from zero
     // Assumes distances are atom_2 - atom_1
     //
     // *note: force is a packed array of coordinates.
 
-    int     pair_idx;    
+    int     pair_idx;
     double  fcut;
     double  fcutderiv;
 
@@ -3470,56 +3442,56 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
     pair_idx = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
 
     if (dx >= chimes_2b_cutoff[pair_idx][1])
-        return;    
+        return;
 
     // Look up/interpolate for energy and force scalar
 
     energy              += get_tab_2B(pair_idx, dx, true);
-    double force_scalar  = get_tab_2B(pair_idx, dx, false); 
+    double force_scalar  = get_tab_2B(pair_idx, dx, false);
 
     force[0*CHDIM+0] += force_scalar * dr[0];
     force[0*CHDIM+1] += force_scalar * dr[1];
     force[0*CHDIM+2] += force_scalar * dr[2];
-    
+
     force[1*CHDIM+0] -= force_scalar * dr[0];
     force[1*CHDIM+1] -= force_scalar * dr[1];
     force[1*CHDIM+2] -= force_scalar * dr[2];
-    
+
     // xx xy xz yy yz zz
     // 0  1  2  3  4  5
-    
+
     // xx xy xz yx yy yz zx zy zz
     // 0  1  2  3  4  5  6  7  8
     // *           *           *
-    
+
     stress[0] -= force_scalar * dr[0] * dr[0]; // xx tensor component
-    stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component 
+    stress[1] -= force_scalar * dr[0] * dr[1]; // xy tensor component
     stress[2] -= force_scalar * dr[0] * dr[2]; // xz tensor component
     stress[3] -= force_scalar * dr[1] * dr[1]; // yy tensor component
     stress[4] -= force_scalar * dr[1] * dr[2]; // yz tensor component
     stress[5] -= force_scalar * dr[2] * dr[2]; // zz tensor component
 
     double E_penalty = 0.0;
-    get_penalty(dx, pair_idx, E_penalty , force_scalar); // true: just check, don't modify energy or force 
+    get_penalty(dx, pair_idx, E_penalty , force_scalar); // true: just check, don't modify energy or force
     /*
-    if ( E_penalty > 0.0 ) 
+    if ( E_penalty > 0.0 )
     {
         energy += E_penalty;
 
         force_scalar /= dx ;
-        
+
         // Note: force_scalar is negative (LEF) 7/30/21.
         force[0*CHDIM+0] += force_scalar * dr[0];
         force[0*CHDIM+1] += force_scalar * dr[1];
         force[0*CHDIM+2] += force_scalar * dr[2];
-        
+
         force[1*CHDIM+0] -= force_scalar * dr[0];
         force[1*CHDIM+1] -= force_scalar * dr[1];
         force[1*CHDIM+2] -= force_scalar * dr[2];
 
         // Update stress according to penalty force. (LEF) 07/30/21
         stress[0] -= force_scalar  * dr[0] * dr[0]; // xx tensor component
-        stress[1] -= force_scalar  * dr[0] * dr[1]; // xy tensor component 
+        stress[1] -= force_scalar  * dr[0] * dr[1]; // xy tensor component
         stress[2] -= force_scalar  * dr[0] * dr[2]; // xz tensor component
         stress[3] -= force_scalar  * dr[1] * dr[1]; // yy tensor component
         stress[4] -= force_scalar  * dr[1] * dr[2]; // yz tensor component
@@ -3527,14 +3499,14 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
 
     }
     */
-    
+
     force_scalar_in = force_scalar;
 }
 
 double chimesFF::get_tab_2B(int pair_idx, double rij, bool for_energy)
 {
     // Perform binary search to find the appropriate interval
-    
+
     auto it = lower_bound(tab_r[pair_idx].begin(), tab_r[pair_idx].end(), rij);
     int   i = distance(tab_r[pair_idx].begin(), it);
 
@@ -3550,18 +3522,18 @@ double chimesFF::get_tab_2B(int pair_idx, double rij, bool for_energy)
         cout << rij << endl;
         exit(0);
     }
-        
+
     if (rij == *it && i > 0)  // Adjust index i to point to the beginning of the interval ... If x_point is exactly a value in x, move left to the interval start
         i--;
 
     // Compute local spline coefficients a, b, c and d for the interval [x[i], x[i+1]]
-    
+
     vector<double>& y = for_energy ? tab_e[pair_idx] : tab_f[pair_idx]; // operate on tab_e or tab_f depending on the value of for_energy
-    
+
     // Ensure i is in the valid range and handle things if it is not
     if (i >= tab_r[pair_idx].size() - 1)
         return 0.0;
-    
+
     else if (i <= 0)
     {
         //throw out_of_range("Index i is out of range for computing coefficients.");
@@ -3592,24 +3564,24 @@ double chimesFF::get_tab_2B(int pair_idx, double rij, bool for_energy)
 
 
 
-// Overload for calls from LAMMPS  
+// Overload for calls from LAMMPS
 void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp)
 {
-	vector<double> dummy_force_scalar(3);
+    vector<double> dummy_force_scalar(3);
 #ifdef FINGERPRINT
     vector<vector<double>> dummy_clusters_3b;
     bool dummy_fingerprint = false;
 #endif
-	compute_3B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
-               #ifdef FINGERPRINT
+    compute_3B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
+#ifdef FINGERPRINT
                     , dummy_clusters_3b,  dummy_fingerprint
-               #endif
+#endif
                );
 }
 void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp, vector<double> & force_scalar_in
-                #ifdef FINGERPRINT
+#ifdef FINGERPRINT
                     , vector<vector<double>> & clusters_3b, bool fingerprint
-                #endif
+#endif
                 )
 {
     // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
@@ -3619,20 +3591,32 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     // dx_ij: Scalar (pair distance)
     // dr_ij: 1d-Array (pair distance: [x, y, and z-component])
     // Force: [natoms in interaction set][x,y, and z-component] *note
-    // Stress [sxx, sxy, sxz, syy, syz, szz] 
+    // Stress [sxx, sxy, sxz, syy, syz, szz]
     // Energy: Scalar; energy for interaction set
     // Tmp: Temporary storage for 3-body interactions.
-    
+
     // Assumes atom indices start from zero
     // Assumes distances are atom_2 - atom_1
     //
     // *note: force and dr are packed vectors of coordinates.
-    
+
+#ifdef TABULATION
+    if (tabulate_3B_cp
+#ifdef FINGERPRINT
+        && !fingerprint
+#endif
+       )
+    {
+        compute_3B_cp_tab(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
+        return;
+    }
+#endif
+
     const int natoms = 3;                   // Number of atoms in an interaction set
     const int npairs = natoms*(natoms-1)/2; // Number of pairs in an interaction set
-    
+
     // tmp.resize(poly_orders[1]) ;
-    
+
     vector<double> &Tn_ij  = tmp.Tn_ij ;
     vector<double> &Tn_ik  = tmp.Tn_ik ;
     vector<double> &Tn_jk  = tmp.Tn_jk ;   // The Chebyshev polymonials
@@ -3646,7 +3630,7 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     double fcutderiv[npairs] ;
     double deriv[npairs];
 
-#if DEBUG == 1  
+#if DEBUG == 1
     if ( dr.size() != 9 )
     {
         cout << "Error: dr should have length = 9.  Current length = " << dr.size() << endl ;
@@ -3659,42 +3643,42 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
 
     if(tripidx < 0)    // Skipping an excluded interaction
         return;
-        
+
     // Check whether cutoffs are within allowed ranges
     vector<int> & mapped_pair_idx = pair_int_trip_map[type_idx] ;
 
-     double cutoff_0  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[0]];
-     double cutoff_00 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[0]];
+    double cutoff_0  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[0]];
+    double cutoff_00 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[0]];
     if (dx[0] >= cutoff_0)    // ij
-        return;    
-     double cutoff_1  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[1]];
-     double cutoff_01 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[1]];
+        return;
+    double cutoff_1  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[1]];
+    double cutoff_01 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[1]];
     if (dx[1] >= cutoff_1)    // ik
-        return;    
-     double cutoff_2  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[2]];
-     double cutoff_02 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[2]];
+        return;
+    double cutoff_2  = chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[2]];
+    double cutoff_02 = chimes_3b_cutoff[ tripidx ][0][mapped_pair_idx[2]];
     if (dx[2] >= cutoff_2)    // jk
-        return;    
+        return;
 #ifdef FINGERPRINT
     if (fingerprint) {
         // Most efficient version - construct in-place with emplace_back
-            clusters_3b.emplace_back(std::initializer_list<double>{
+        clusters_3b.emplace_back(std::initializer_list<double>{
             dx[0], dx[1], dx[2],  // Assuming dx is a vector of 3 distances
             static_cast<double>(typ_idxs[0]),
             static_cast<double>(typ_idxs[1]),
             static_cast<double>(typ_idxs[2])});
-        }
+    }
 #endif
-     
- int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];;
- int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
- int pair_type_3 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ];
- int order       = poly_orders[1];
 
-     
+    int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];;
+    int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
+    int pair_type_3 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ];
+    int order       = poly_orders[1];
+
+
     // At this point, all distances are within allowed ranges. We can now proceed to the force/stress/energy calculation
 
-#ifdef USE_DISTANCE_TENSOR  
+#ifdef USE_DISTANCE_TENSOR
     // Tensor product of displacement vectors.
     double dr2[CHDIM*CHDIM*npairs*npairs] ;
     init_distance_tensor(dr2, dr, npairs) ;
@@ -3707,9 +3691,9 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1], cutoff_00, cutoff_0, order);
     set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2], cutoff_01, cutoff_1, order);
     set_cheby_polys(Tn_jk, Tnd_jk, dx[2], morse_var[pair_type_3], cutoff_02, cutoff_2, order);
-    
+
     // Set up the smoothing functions
-        
+
     get_fcut(dx[0], cutoff_0, fcut[0], fcutderiv[0]);
     get_fcut(dx[1], cutoff_1, fcut[1], fcutderiv[1]);
     get_fcut(dx[2], cutoff_2, fcut[2], fcutderiv[2]);
@@ -3726,19 +3710,19 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
     int powers[npairs] ;
     double force_scalar[npairs] ;
 
-         double fscalar_0 = force_scalar[0];
-         double fscalar_1 = force_scalar[1];
-         double fscalar_2 = force_scalar[2];
+    double fscalar_0 = force_scalar[0];
+    double fscalar_1 = force_scalar[1];
+    double fscalar_2 = force_scalar[2];
 
     for(int coeffs=0; coeffs<ncoeffs_3b[tripidx]; coeffs++)
     {
         coeff = chimes_3b_params[tripidx][coeffs];
-        
+
         powers[0] = chimes_3b_powers[tripidx][coeffs][mapped_pair_idx[0]];
         powers[1] = chimes_3b_powers[tripidx][coeffs][mapped_pair_idx[1]];
         powers[2] = chimes_3b_powers[tripidx][coeffs][mapped_pair_idx[2]];
-        
-        energy += coeff * fcut_all * Tn_ij[ powers[0] ] * Tn_ik[ powers[1] ] * Tn_jk[ powers[2] ];    
+
+        energy += coeff * fcut_all * Tn_ij[ powers[0] ] * Tn_ik[ powers[1] ] * Tn_jk[ powers[2] ];
 
         deriv[0] = fcut[0] * Tnd_ij[ powers[0] ] + fcutderiv[0] * Tn_ij[ powers[0] ];
         deriv[1] = fcut[1] * Tnd_ik[ powers[1] ] + fcutderiv[1] * Tn_ik[ powers[1] ];
@@ -3747,20 +3731,20 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
         force_scalar[0]  = coeff * deriv[0] * fcut_2[0] * Tn_ik[powers[1]]  * Tn_jk[powers[2]] ;
         force_scalar[1]  = coeff * deriv[1] * fcut_2[1] * Tn_ij[powers[0]]  * Tn_jk[powers[2]] ;
         force_scalar[2]  = coeff * deriv[2] * fcut_2[2] * Tn_ij[powers[0]]  * Tn_ik[powers[1]] ;
-        
+
         fscalar_0 = force_scalar[0];
         fscalar_1 = force_scalar[1];
         fscalar_2 = force_scalar[2];
-        
+
         // Accumulate forces/stresses on/from the ij pair
-        
+
         force[0*CHDIM+0] += fscalar_0 * dr[0*CHDIM+0];
         force[0*CHDIM+1] += fscalar_0 * dr[0*CHDIM+1];
         force[0*CHDIM+2] += fscalar_0 * dr[0*CHDIM+2];
 
         force[1*CHDIM+0] -= fscalar_0 * dr[0*CHDIM+0];
         force[1*CHDIM+1] -= fscalar_0 * dr[0*CHDIM+1];
-        force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];   
+        force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];
 
         // dr2_3B looks like a function call, but the optimizer should remove it entirely.
 #ifdef USE_DISTANCE_TENSOR
@@ -3771,7 +3755,7 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
         stress[3] -= fscalar_0  * dr2_3B(dr2,0,1,0,1); // yy tensor component
         stress[4] -= fscalar_0  * dr2_3B(dr2,0,1,0,2); // yz tensor component
         stress[5] -= fscalar_0  * dr2_3B(dr2,0,2,0,2); // zz tensor component
-        
+
 #else
         stress[0] -= fscalar_0  * dr[0*CHDIM+0] * dr[0*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_0  * dr[0*CHDIM+0] * dr[0*CHDIM+1]; // xy tensor component
@@ -3779,16 +3763,16 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
         stress[3] -= fscalar_0  * dr[0*CHDIM+1] * dr[0*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_0  * dr[0*CHDIM+1] * dr[0*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_0  * dr[0*CHDIM+2] * dr[0*CHDIM+2]; // zz tensor component
-#endif        
+#endif
         // Accumulate forces/stresses on/from the ik pair
-        
+
         force[0*CHDIM+0] += fscalar_1 * dr[1*CHDIM+0];
         force[0*CHDIM+1] += fscalar_1 * dr[1*CHDIM+1];
         force[0*CHDIM+2] += fscalar_1 * dr[1*CHDIM+2];
 
         force[2*CHDIM+0] -= fscalar_1 * dr[1*CHDIM+0];
         force[2*CHDIM+1] -= fscalar_1 * dr[1*CHDIM+1];
-        force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];   
+        force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];
 
 #ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_1  * dr2_3B(dr2,1,0,1,0); // xx tensor component
@@ -3805,16 +3789,16 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
         stress[4] -= fscalar_1  * dr[1*CHDIM+1] * dr[1*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_1  * dr[1*CHDIM+2] * dr[1*CHDIM+2]; // zz tensor component
 #endif
-        
+
         // Accumulate forces/stresses on/from the jk pair
-        
+
         force[1*CHDIM+0] += fscalar_2 * dr[2*CHDIM+0];
         force[1*CHDIM+1] += fscalar_2 * dr[2*CHDIM+1];
         force[1*CHDIM+2] += fscalar_2 * dr[2*CHDIM+2];
 
         force[2*CHDIM+0] -= fscalar_2 * dr[2*CHDIM+0];
         force[2*CHDIM+1] -= fscalar_2 * dr[2*CHDIM+1];
-        force[2*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];   
+        force[2*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];
 
 #ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_2  * dr2_3B(dr2,2,0,2,0); // xx tensor component
@@ -3823,27 +3807,27 @@ void chimesFF::compute_3B(const vector<double> & dx, const vector<double> & dr, 
         stress[3] -= fscalar_2  * dr2_3B(dr2,2,1,2,1); // yy tensor component
         stress[4] -= fscalar_2  * dr2_3B(dr2,2,1,2,2); // yz tensor component
         stress[5] -= fscalar_2  * dr2_3B(dr2,2,2,2,2); // zz tensor component
-#else        
+#else
         stress[0] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+1]; // xy tensor component
         stress[2] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+2]; // xz tensor component
         stress[3] -= fscalar_2  * dr[2*CHDIM+1] * dr[2*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_2  * dr[2*CHDIM+1] * dr[2*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_2  * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component
-#endif        
+#endif
     }
-    
+
     force_scalar_in[0] = force_scalar[0];
     force_scalar_in[1] = force_scalar[1];
     force_scalar_in[2] = force_scalar[2];
 
-    return;    
+    return;
 }
 #ifdef TABULATION
 void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp)
 {
-	vector<double> dummy_force_scalar(3);
-	compute_3B_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
+    vector<double> dummy_force_scalar(3);
+    compute_3B_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp, vector<double> & force_scalar_in)
 {
@@ -3855,25 +3839,25 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     // dx_ij: Scalar (pair distance)
     // dr_ij: 1d-Array (pair distance: [x, y, and z-component])
     // Force: [natoms in interaction set][x,y, and z-component] *note
-    // Stress [sxx, sxy, sxz, syy, syz, szz] 
+    // Stress [sxx, sxy, sxz, syy, syz, szz]
     // Energy: Scalar; energy for interaction set
     // Tmp: Temporary storage for 3-body interactions.
-    
+
     // Assumes atom indices start from zero
     // Assumes distances are atom_2 - atom_1
     //
     // *note: force and dr are packed vectors of coordinates.
-    
+
     const int natoms = 3;                   // Number of atoms in an interaction set
     const int npairs = natoms*(natoms-1)/2; // Number of pairs in an interaction set
-    
+
     // Avoid allocating vector quantities.  Heap memory allocation is slow on the GPU.
     // fixed-length C arrays are allocated on the stack.
     double fcut[npairs] ;
     double fcutderiv[npairs] ;
     double deriv[npairs];
 
-#if DEBUG == 1  
+#if DEBUG == 1
     if ( dr.size() != 9 )
     {
         cout << "Error: dr should have length = 9.  Current length = " << dr.size() << endl ;
@@ -3886,20 +3870,20 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
 
     if(tripidx < 0)    // Skipping an excluded interaction
         return;
-        
+
     // Check whether cutoffs are within allowed ranges
     vector<int> & mapped_pair_idx = pair_int_trip_map[type_idx] ;
 
     if (dx[0] >= chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[0]])    // ij
-        return;    
+        return;
     if (dx[1] >= chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[1]])    // ik
-        return;    
+        return;
     if (dx[2] >= chimes_3b_cutoff[ tripidx ][1][mapped_pair_idx[2]])    // jk
-        return;    
-     
+        return;
+
     // At this point, all distances are within allowed ranges. We can now proceed to the force/stress/energy calculation
 
-#ifdef USE_DISTANCE_TENSOR  
+#ifdef USE_DISTANCE_TENSOR
     // Tensor product of displacement vectors.
     double dr2[CHDIM*CHDIM*npairs*npairs] ;
     init_distance_tensor(dr2, dr, npairs) ;
@@ -3908,26 +3892,26 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     // Look up/interpolate for energy and force scalar .... this can likely be done MUCH more efficiently by integrating force/energy interpolation more completely
     // energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], dx[0], dx[1], dx[2]); // Function is overloaded. No final argument == this is for an energy calculation.
     double force_scalar[npairs];
-    energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], dx[0], dx[1], dx[2],  force_scalar);   
+    energy += get_tab_3B(tripidx, trip_params_pair_typs[tripidx][mapped_pair_idx[0]], trip_params_pair_typs[tripidx][mapped_pair_idx[1]], trip_params_pair_typs[tripidx][mapped_pair_idx[2]], dx[0], dx[1], dx[2],  force_scalar);
 
     // Accumulate forces/stresses on/from the ij pair
-    
+
     force[0*CHDIM+0] += force_scalar[0] * dr[0*CHDIM+0];
     force[0*CHDIM+1] += force_scalar[0] * dr[0*CHDIM+1];
     force[0*CHDIM+2] += force_scalar[0] * dr[0*CHDIM+2];
-    
+
     force[1*CHDIM+0] -= force_scalar[0] * dr[0*CHDIM+0];
     force[1*CHDIM+1] -= force_scalar[0] * dr[0*CHDIM+1];
-    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];   
-        // dr2_3B looks like a function call, but the optimizer should remove it entirely.
+    force[1*CHDIM+2] -= force_scalar[0] * dr[0*CHDIM+2];
+    // dr2_3B looks like a function call, but the optimizer should remove it entirely.
 #ifdef USE_DISTANCE_TENSOR
-     // New stress code.
-     stress[0] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,0); // xx tensor component
-     stress[1] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,1); // xy tensor component
-     stress[2] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,2); // xz tensor component
-     stress[3] -= force_scalar[0]  * dr2_3B(dr2,0,1,0,1); // yy tensor component
-     stress[4] -= force_scalar[0]  * dr2_3B(dr2,0,1,0,2); // yz tensor component
-     stress[5] -= force_scalar[0]  * dr2_3B(dr2,0,2,0,2); // zz tensor component
+    // New stress code.
+    stress[0] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,0); // xx tensor component
+    stress[1] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,1); // xy tensor component
+    stress[2] -= force_scalar[0]  * dr2_3B(dr2,0,0,0,2); // xz tensor component
+    stress[3] -= force_scalar[0]  * dr2_3B(dr2,0,1,0,1); // yy tensor component
+    stress[4] -= force_scalar[0]  * dr2_3B(dr2,0,1,0,2); // yz tensor component
+    stress[5] -= force_scalar[0]  * dr2_3B(dr2,0,2,0,2); // zz tensor component
 #else
     stress[0] -= force_scalar[0]  * dr[0*CHDIM+0] * dr[0*CHDIM+0]; // xx tensor component
     stress[1] -= force_scalar[0]  * dr[0*CHDIM+0] * dr[0*CHDIM+1]; // xy tensor component
@@ -3935,15 +3919,15 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     stress[3] -= force_scalar[0]  * dr[0*CHDIM+1] * dr[0*CHDIM+1]; // yy tensor component
     stress[4] -= force_scalar[0]  * dr[0*CHDIM+1] * dr[0*CHDIM+2]; // yz tensor component
     stress[5] -= force_scalar[0]  * dr[0*CHDIM+2] * dr[0*CHDIM+2]; // zz tensor component
-#endif        
+#endif
     // Accumulate forces/stresses on/from the ik pair
     force[0*CHDIM+0] += force_scalar[1] * dr[1*CHDIM+0];
     force[0*CHDIM+1] += force_scalar[1] * dr[1*CHDIM+1];
     force[0*CHDIM+2] += force_scalar[1] * dr[1*CHDIM+2];
-    
+
     force[2*CHDIM+0] -= force_scalar[1] * dr[1*CHDIM+0];
     force[2*CHDIM+1] -= force_scalar[1] * dr[1*CHDIM+1];
-    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];   
+    force[2*CHDIM+2] -= force_scalar[1] * dr[1*CHDIM+2];
 #ifdef USE_DISTANCE_TENSOR
     stress[0] -= force_scalar[1]  * dr2_3B(dr2,1,0,1,0); // xx tensor component
     stress[1] -= force_scalar[1]  * dr2_3B(dr2,1,0,1,1); // xy tensor component
@@ -3959,7 +3943,7 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     stress[4] -= force_scalar[1]  * dr[1*CHDIM+1] * dr[1*CHDIM+2]; // yz tensor component
     stress[5] -= force_scalar[1]  * dr[1*CHDIM+2] * dr[1*CHDIM+2]; // zz tensor component
 #endif
-        
+
     // Accumulate forces/stresses on/from the jk pair
     force[1*CHDIM+0] += force_scalar[2] * dr[2*CHDIM+0];
     force[1*CHDIM+1] += force_scalar[2] * dr[2*CHDIM+1];
@@ -3967,8 +3951,8 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
 
     force[2*CHDIM+0] -= force_scalar[2] * dr[2*CHDIM+0];
     force[2*CHDIM+1] -= force_scalar[2] * dr[2*CHDIM+1];
-    force[2*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];   
-    
+    force[2*CHDIM+2] -= force_scalar[2] * dr[2*CHDIM+2];
+
 #ifdef USE_DISTANCE_TENSOR
     stress[0] -= force_scalar[2]  * dr2_3B(dr2,2,0,2,0); // xx tensor component
     stress[1] -= force_scalar[2]  * dr2_3B(dr2,2,0,2,1); // xy tensor component
@@ -3976,14 +3960,14 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     stress[3] -= force_scalar[2]  * dr2_3B(dr2,2,1,2,1); // yy tensor component
     stress[4] -= force_scalar[2]  * dr2_3B(dr2,2,1,2,2); // yz tensor component
     stress[5] -= force_scalar[2]  * dr2_3B(dr2,2,2,2,2); // zz tensor component
-#else        
+#else
     stress[0] -= force_scalar[2]  * dr[2*CHDIM+0] * dr[2*CHDIM+0]; // xx tensor component
     stress[1] -= force_scalar[2]  * dr[2*CHDIM+0] * dr[2*CHDIM+1]; // xy tensor component
     stress[2] -= force_scalar[2]  * dr[2*CHDIM+0] * dr[2*CHDIM+2]; // xz tensor component
     stress[3] -= force_scalar[2]  * dr[2*CHDIM+1] * dr[2*CHDIM+1]; // yy tensor component
     stress[4] -= force_scalar[2]  * dr[2*CHDIM+1] * dr[2*CHDIM+2]; // yz tensor component
     stress[5] -= force_scalar[2]  * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component
-#endif    
+#endif
     force_scalar_in[0] = force_scalar[0];
     force_scalar_in[1] = force_scalar[1];
     force_scalar_in[2] = force_scalar[2];
@@ -3991,28 +3975,19 @@ void chimesFF::compute_3B_tab(const vector<double> & dx, const vector<double> & 
     // cout << chrono::duration_cast<chrono::nanoseconds>(t1-t0).count() << " before \n";
     // cout << chrono::duration_cast<chrono::nanoseconds>(t2-t1).count() << " during \n";
     // cout << chrono::duration_cast<chrono::nanoseconds>(t3-t2).count() << " after  \n";
-    return;    
+    return;
 }
 
 // Comparator for sorting the vector of pairs
-bool custom_comparator(const pair<string, double>& a, const pair<string, double>& b) 
+bool custom_comparator(const pair<string, double>& a, const pair<string, double>& b)
 {
-    if (a.first == b.first) // If the pair_types are the same, sort by pair_dist in descending order        
+    if (a.first == b.first) // If the pair_types are the same, sort by pair_dist in descending order
         return a.second > b.second;
 
     return a.first < b.first; // Otherwise, sort by pair_type in ascending order
-}   
+}
 #ifdef TABULATION
-void chimesFF::compute_4B_svd3x3_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    vector<double> & force_scalar_in
-)
+void chimesFF::compute_4B_svd3x3_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp, vector<double> & force_scalar_in)
 {
     const int npairs = 6;
 
@@ -4026,8 +4001,7 @@ void chimesFF::compute_4B_svd3x3_tab(
     if (quadidx < 0)
         return;
 
-    if ((int)tab_4b_svd3x3_rank.size() <= quadidx ||
-        tab_4b_svd3x3_rank[quadidx] <= 0)
+    if ((int)tab_4b_svd3x3_rank.size() <= quadidx || tab_4b_svd3x3_rank[quadidx] <= 0)
     {
         compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
         return;
@@ -4062,16 +4036,29 @@ void chimesFF::compute_4B_svd3x3_tab(
         canon_to_runtime[c] = param_to_runtime[pslot];
     }
 
+    // Canonical slots on each side of the 3|3 cut, as written in the metadata
+    // by SVD-SGR-3x3.py (default left = 0,1,3 ; right = 2,4,5).
+    // (Previously this path assumed 0,1,2 | 3,4,5, which does not match the
+    // generator and gave wrong energies/forces whenever triplet reuse was off.)
+    int left_dims[3]  = {0, 1, 3};
+    int right_dims[3] = {2, 4, 5};
+
+    if ((int)tab_4b_svd3x3_left_dims.size() > quadidx && (int)tab_4b_svd3x3_left_dims[quadidx].size() == 3)
+        for (int q = 0; q < 3; q++)
+            left_dims[q] = tab_4b_svd3x3_left_dims[quadidx][q];
+
+    if ((int)tab_4b_svd3x3_right_dims.size() > quadidx && (int)tab_4b_svd3x3_right_dims[quadidx].size() == 3)
+        for (int q = 0; q < 3; q++)
+            right_dims[q] = tab_4b_svd3x3_right_dims[quadidx][q];
+
     double rleft[3];
     double rright[3];
 
-    rleft[0] = dx[canon_to_runtime[0]];
-    rleft[1] = dx[canon_to_runtime[1]];
-    rleft[2] = dx[canon_to_runtime[2]];
-
-    rright[0] = dx[canon_to_runtime[3]];
-    rright[1] = dx[canon_to_runtime[4]];
-    rright[2] = dx[canon_to_runtime[5]];
+    for (int q = 0; q < 3; q++)
+    {
+        rleft[q]  = dx[canon_to_runtime[left_dims[q]]];
+        rright[q] = dx[canon_to_runtime[right_dims[q]]];
+    }
 
     const SVD3x3SideTable &left_tab  = tab_4b_svd3x3_left[quadidx];
     const SVD3x3SideTable &right_tab = tab_4b_svd3x3_right[quadidx];
@@ -4098,23 +4085,9 @@ void chimesFF::compute_4B_svd3x3_tab(
     double *Y1 = tmp.svd_Y1.data();
     double *Y2 = tmp.svd_Y2.data();
 
-    interpolateSVD3x3SideLinear(
-        left_tab,
-        rleft,
-        X,
-        X0,
-        X1,
-        X2
-    );
+    interpolateSVD3x3SideLinear(left_tab, rleft, X, X0, X1, X2);
 
-    interpolateSVD3x3SideLinear(
-        right_tab,
-        rright,
-        Y,
-        Y0,
-        Y1,
-        Y2
-    );
+    interpolateSVD3x3SideLinear(right_tab, rright, Y, Y0, Y1, Y2);
 
     double e4  = 0.0;
 
@@ -4146,13 +4119,13 @@ void chimesFF::compute_4B_svd3x3_tab(
 
     double dE_pair[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 
-    dE_pair[canon_to_runtime[0]] = dL0;
-    dE_pair[canon_to_runtime[1]] = dL1;
-    dE_pair[canon_to_runtime[2]] = dL2;
+    dE_pair[canon_to_runtime[left_dims[0]]]  = dL0;
+    dE_pair[canon_to_runtime[left_dims[1]]]  = dL1;
+    dE_pair[canon_to_runtime[left_dims[2]]]  = dL2;
 
-    dE_pair[canon_to_runtime[3]] = dR0;
-    dE_pair[canon_to_runtime[4]] = dR1;
-    dE_pair[canon_to_runtime[5]] = dR2;
+    dE_pair[canon_to_runtime[right_dims[0]]] = dR0;
+    dE_pair[canon_to_runtime[right_dims[1]]] = dR1;
+    dE_pair[canon_to_runtime[right_dims[2]]] = dR2;
 
     double force_scalar[6];
 
@@ -4240,15 +4213,7 @@ void chimesFF::compute_4B_svd3x3_tab(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_tab_coeff(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_tab_coeff(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     vector<double> dummy_force_scalar(6);
     compute_4B_tab_coeff(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
@@ -4256,16 +4221,7 @@ void chimesFF::compute_4B_tab_coeff(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_tab_coeff(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    vector<double> & force_scalar_in
-)
+void chimesFF::compute_4B_tab_coeff(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp, vector<double> & force_scalar_in)
 {
     const int npairs = 6;
 
@@ -4304,24 +4260,12 @@ void chimesFF::compute_4B_tab_coeff(
     int pair_type_5 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[3] ];
     int pair_type_6 = atom_int_pair_map[ typ_idxs[2]*natmtyps + typ_idxs[3] ];
 
-    set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[0]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]], poly_orders[2]);
-    set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]], poly_orders[2]);
-    set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[2]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[2]], poly_orders[2]);
-    set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]], poly_orders[2]);
-    set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[4]], poly_orders[2]);
-    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6],
-                    chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]],
-                    chimes_4b_cutoff[quadidx][1][mapped_pair_idx[5]], poly_orders[2]);
+    set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[0]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[0]], poly_orders[2]);
+    set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[1]], poly_orders[2]);
+    set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[2]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[2]], poly_orders[2]);
+    set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[3]], poly_orders[2]);
+    set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[4]], poly_orders[2]);
+    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[5]], poly_orders[2]);
 
     array<double, npairs> fcut, fcutderiv;
     for (int i=0; i<npairs; i++)
@@ -4582,13 +4526,7 @@ void chimesFF::compute_4B_tab_coeff(
 #endif
 
 #ifdef TABULATION
-void chimesFF::interpolateCoeff4B_2D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1
-)
+void chimesFF::interpolateCoeff4B_2D(int quadidx, const double *rquery, double *coeffE, double *coeffD0, double *coeffD1)
 {
     const int ncoeff = tab_4b_ncoeff[quadidx];
     const int stride0 = tab_4b_stride[quadidx][0];
@@ -4634,14 +4572,7 @@ void chimesFF::interpolateCoeff4B_2D(
 #endif
 
 #ifdef TABULATION
-void chimesFF::interpolateCoeff4B_3D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1,
-    double *coeffD2
-)
+void chimesFF::interpolateCoeff4B_3D(int quadidx, const double *rquery, double *coeffE, double *coeffD0, double *coeffD1, double *coeffD2)
 {
     const int ncoeff = tab_4b_ncoeff[quadidx];
     const int stride0 = tab_4b_stride[quadidx][0];
@@ -4720,15 +4651,7 @@ void chimesFF::interpolateCoeff4B_3D(
 #endif
 
 #ifdef TABULATION
-void chimesFF::interpolateCoeff4B_4D(
-    int quadidx,
-    const double *rquery,
-    double *coeffE,
-    double *coeffD0,
-    double *coeffD1,
-    double *coeffD2,
-    double *coeffD3
-)
+void chimesFF::interpolateCoeff4B_4D(int quadidx, const double *rquery, double *coeffE, double *coeffD0, double *coeffD1, double *coeffD2, double *coeffD3)
 {
     const int ncoeff = tab_4b_ncoeff[quadidx];
     const int stride0 = tab_4b_stride[quadidx][0];
@@ -4828,35 +4751,35 @@ void chimesFF::interpolateCoeff4B_4D(
 #endif
 
 // Linear interpolation function
-double linearInterpolate(double x, double x0, double x1, double f0, double f1) 
+double linearInterpolate(double x, double x0, double x1, double f0, double f1)
 {
     return f0 * (x1 - x) / (x1 - x0) + f1 * (x - x0) / (x1 - x0);
 }
 
 // Cubic interpolation helper functions using Catmull-Rom splines
-double cubicInterpolate(double p0, double p1, double p2, double p3, double x) 
+double cubicInterpolate(double p0, double p1, double p2, double p3, double x)
 {
     return p1 + 0.5 * x * (p2 - p0 + x * (2 * p0 - 5 * p1 + 4 * p2 - p3 + x * (3 * (p1 - p2) + p3 - p0)));
 }
 
-double bicubicInterpolate(const vector<double>& p, double x, double y) 
+double bicubicInterpolate(const vector<double>& p, double x, double y)
 {
     static double arr[4]; // Fixed-size array
-    
-    for (size_t i = 0; i < 4; ++i) 
+
+    for (size_t i = 0; i < 4; ++i)
     {
         arr[i] = cubicInterpolate(p[i * 4 + 0], p[i * 4 + 1], p[i * 4 + 2], p[i * 4 + 3], x);
-        }
+    }
     return cubicInterpolate(arr[0], arr[1], arr[2], arr[3], y);
 }
 
 double tricubicInterpolate(const array<double, 64>& p, double x, double y, double z)
 {
     static double arr[4]; // Fixed-size array
-    
-    for (size_t i = 0; i < 4; ++i) 
+
+    for (size_t i = 0; i < 4; ++i)
         arr[i] = bicubicInterpolate(vector<double>(p.begin() + i * 16, p.begin() + (i + 1) * 16), x, y);
-    
+
     return cubicInterpolate(arr[0], arr[1], arr[2], arr[3], z);
 }
 
@@ -4876,7 +4799,7 @@ vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik
 
     // find the first occurance of the ij, ik jk, distance
     // This method is better for non-even spacing but more annoying for different element types
-    // int i = std::lower_bound((*tab_rjk_3B_ptr).begin(), (*tab_rjk_3B_ptr).begin() + size_ik, rij) - (*tab_rjk_3B_ptr).begin() -1;  
+    // int i = std::lower_bound((*tab_rjk_3B_ptr).begin(), (*tab_rjk_3B_ptr).begin() + size_ik, rij) - (*tab_rjk_3B_ptr).begin() -1;
     // int j = std::lower_bound((*tab_rjk_3B_ptr).begin(), (*tab_rjk_3B_ptr).begin() + size_ik, rik) - (*tab_rjk_3B_ptr).begin() -1;
     // int k = std::lower_bound((*tab_rjk_3B_ptr).begin(), (*tab_rjk_3B_ptr).begin() + size_ik, rjk) - (*tab_rjk_3B_ptr).begin() -1;
 
@@ -4932,7 +4855,7 @@ vector<double> chimesFF::interpolateTricubic(int tripidx, double rij, double rik
 
 // Generic version
 
-double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string& pairtyp_ik, const string& pairtyp_jk, double rij, double rik, double rjk, double (&force_scalar)[3]) 
+double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string& pairtyp_ik, const string& pairtyp_jk, double rij, double rik, double rjk, double (&force_scalar)[3])
 {
     // 1. Create a structure that holds the type, the distance, AND the original index
     struct PairInfo {
@@ -4942,26 +4865,19 @@ double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string&
     };
 
     array<PairInfo, 3> pairs = {{
-        {pairtyp_ij, rij, 0},
-        {pairtyp_ik, rik, 1},
-        {pairtyp_jk, rjk, 2}
-    }};
+            {pairtyp_ij, rij, 0},
+            {pairtyp_ik, rik, 1},
+            {pairtyp_jk, rjk, 2}
+        }};
 
     // 2. Sort the pairs (using your custom comparator logic)
     // Example: sorting alphabetically by pair type string
     std::sort(pairs.begin(), pairs.end(), [](const PairInfo& a, const PairInfo& b) {
-        return a.type < b.type; 
+        return a.type < b.type;
     });
 
     // 3. Perform interpolation using the SORTED distances
-    auto results = interpolateTricubic(tripidx, 
-                                      pairs[0].dist, 
-                                      pairs[1].dist, 
-                                      pairs[2].dist, 
-                                      tab_e_3B[tripidx], 
-                                      tab_f_ij_3B[tripidx], 
-                                      tab_f_ik_3B[tripidx], 
-                                      tab_f_jk_3B[tripidx]);
+    auto results = interpolateTricubic(tripidx, pairs[0].dist, pairs[1].dist, pairs[2].dist, tab_e_3B[tripidx], tab_f_ij_3B[tripidx], tab_f_ik_3B[tripidx], tab_f_jk_3B[tripidx]);
 
     // 4. Map the derivatives back to the PHYSICAL indices
     // results[1] is dE/d(pairs[0].dist), results[2] is dE/d(pairs[1].dist), etc.
@@ -4973,19 +4889,14 @@ double chimesFF::get_tab_3B(int tripidx, const string& pairtyp_ij, const string&
 }
 // energy version
 // double chimesFF::get_tab_3B(int tripidx, string pairtyp_ij, string pairtyp_ik, string pairtyp_jk, double rij, double rik, double rjk, double (&force_scalar)[3])
-// {  
+// {
 //     // double dummy[3];
-//     return get_tab_3B_general(tripidx, pairtyp_ij, pairtyp_ik, pairtyp_jk, rij, rik, rjk, true, force_scalar); 
+//     return get_tab_3B_general(tripidx, pairtyp_ij, pairtyp_ik, pairtyp_jk, rij, rik, rjk, true, force_scalar);
 // }
 
 #endif
 
-static inline void chimes_accumulate_4b_force_stress_from_scalars(
-    const std::vector<double> & dr,
-    const double *fs,
-    std::vector<double> & force,
-    std::vector<double> & stress
-)
+static inline void chimes_accumulate_4b_force_stress_from_scalars(const std::vector<double> & dr, const double *fs, std::vector<double> & force, std::vector<double> & stress)
 {
     // Runtime pair order:
     //   0 = ij
@@ -5051,11 +4962,7 @@ static inline void chimes_accumulate_4b_force_stress_from_scalars(
 }
 
 #ifdef TABULATION
-static inline bool chimes_triplet_dx_from_runtime_slot(
-    int runtime_slot,
-    const std::vector<double> & dx_trip_013,
-    double & r
-)
+static inline bool chimes_triplet_dx_from_runtime_slot(int runtime_slot, const std::vector<double> & dx_trip_013, double & r)
 {
     // dx_trip_013:
     //   [0] = ij, runtime slot 0
@@ -5093,13 +5000,75 @@ static inline bool chimes_runtime_slot_is_l_side(int runtime_slot)
 }
 #endif
 
+
 #ifdef TABULATION
-bool chimesFF::prepare_4B_cp_tab_triplet_reuse(
-    const std::vector<double> & dx_trip_013,
-    const std::vector<int> & typ_idxs,
-    chimes4BTmp & tmp,
-    chimes4BTripletReuseTmp & reuse
-)
+// -----------------------------------------------------------------------------
+// CP helpers (shared by CP-direct and CP-table paths)
+// -----------------------------------------------------------------------------
+const int * chimesFF::cp_canon_to_runtime(int idx, const std::vector<std::vector<int>> & canon_to_param, std::vector<std::array<int,6>> & cache)
+{
+    if (cache.size() != pair_int_quad_map.size())
+    {
+        std::array<int,6> unset;
+        unset.fill(-1);
+        cache.assign(pair_int_quad_map.size(), unset);
+    }
+
+    std::array<int,6> & c2r = cache[idx];
+
+    if (c2r[0] < 0)
+    {
+        const int quadidx = atom_int_quad_map[idx];
+        const std::vector<int> & mp = pair_int_quad_map[idx];
+
+        int param_to_runtime[6];
+        for (int r = 0; r < 6; r++)
+            param_to_runtime[mp[r]] = r;
+
+        for (int c = 0; c < 6; c++)
+        {
+            const int pslot = ((int)canon_to_param.size() > quadidx && (int)canon_to_param[quadidx].size() == 6)
+                            ? canon_to_param[quadidx][c] : c;
+            c2r[c] = param_to_runtime[pslot];
+        }
+    }
+    return c2r.data();
+}
+
+void chimesFF::cp4_contract(const double * const X[6], const double * const D[6], int R, double & E, double dE[6])
+{
+    const double * __restrict x0 = X[0], * __restrict x1 = X[1], * __restrict x2 = X[2];
+    const double * __restrict x3 = X[3], * __restrict x4 = X[4], * __restrict x5 = X[5];
+    const double * __restrict d0 = D[0], * __restrict d1 = D[1], * __restrict d2 = D[2];
+    const double * __restrict d3 = D[3], * __restrict d4 = D[4], * __restrict d5 = D[5];
+
+    double e = 0, g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0;
+
+    for (int q = 0; q < R; q++)
+    {
+        const double a01 = x0[q] * x1[q];
+        const double a23 = x2[q] * x3[q];
+        const double a45 = x4[q] * x5[q];
+        const double a0123 = a01 * a23;
+        const double a2345 = a23 * a45;
+        const double a0145 = a01 * a45;
+
+        e  += a0123 * a45;
+        g0 += d0[q] * x1[q] * a2345;
+        g1 += x0[q] * d1[q] * a2345;
+        g2 += d2[q] * x3[q] * a0145;
+        g3 += x2[q] * d3[q] * a0145;
+        g4 += d4[q] * x5[q] * a0123;
+        g5 += x4[q] * d5[q] * a0123;
+    }
+
+    E = e;
+    dE[0] = g0; dE[1] = g1; dE[2] = g2; dE[3] = g3; dE[4] = g4; dE[5] = g5;
+}
+#endif
+
+#ifdef TABULATION
+bool chimesFF::prepare_4B_cp_tab_triplet_reuse(const std::vector<double> & dx_trip_013, const std::vector<int> & typ_idxs, chimes4BTmp & tmp, chimes4BTripletReuseTmp & reuse)
 {
     reuse.clear();
 
@@ -5117,16 +5086,13 @@ bool chimesFF::prepare_4B_cp_tab_triplet_reuse(
     if (quadidx < 0)
         return false;
 
-    if ((int)tab_4b_cp_rank.size() <= quadidx ||
-        tab_4b_cp_rank[quadidx] <= 0)
+    if ((int)tab_4b_cp_rank.size() <= quadidx || tab_4b_cp_rank[quadidx] <= 0)
         return false;
 
-    if ((int)tab_4b_cp_canon_to_param.size() <= quadidx ||
-        (int)tab_4b_cp_canon_to_param[quadidx].size() != 6)
+    if ((int)tab_4b_cp_canon_to_param.size() <= quadidx || (int)tab_4b_cp_canon_to_param[quadidx].size() != 6)
         return false;
 
-    if ((int)pair_int_quad_map.size() <= idx ||
-        (int)pair_int_quad_map[idx].size() != 6)
+    if ((int)pair_int_quad_map.size() <= idx || (int)pair_int_quad_map[idx].size() != 6)
         return false;
 
     std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
@@ -5216,12 +5182,7 @@ bool chimesFF::prepare_4B_cp_tab_triplet_reuse(
         if (!chimes_triplet_dx_from_runtime_slot(rslot, dx_trip_013, r))
             return false;
 
-        interpolateCP1DLinear(
-            tab_4b_cp_slot[quadidx][c],
-            r,
-            X[a],
-            D[a]
-        );
+        interpolateCP1DLinear(tab_4b_cp_slot[quadidx][c], r, X[a], D[a], chimes_4b_cutoff[quadidx][1][tab_4b_cp_canon_to_param[quadidx][c]]);
     }
 
     reuse.valid = true;
@@ -5265,16 +5226,7 @@ bool chimesFF::prepare_4B_cp_tab_triplet_reuse(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_tab_from_triplet_reuse(
-    const std::vector<double> & dx,
-    const std::vector<double> & dr,
-    const std::vector<int> & typ_idxs,
-    const chimes4BTripletReuseTmp & reuse,
-    std::vector<double> & force,
-    std::vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_cp_tab_from_triplet_reuse(const std::vector<double> & dx, const std::vector<double> & dr, const std::vector<int> & typ_idxs, const chimes4BTripletReuseTmp & reuse, std::vector<double> & force, std::vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     if (!reuse.valid || !reuse.use_cp_tab)
         return;
@@ -5347,12 +5299,7 @@ void chimesFF::compute_4B_cp_tab_from_triplet_reuse(
         const int rslot = reuse.right_runtime[a];
         const int c = runtime_to_canon[rslot];
 
-        interpolateCP1DLinear(
-            tab_4b_cp_slot[quadidx][c],
-            dx[rslot],
-            Y[a],
-            DY[a]
-        );
+        interpolateCP1DLinear(tab_4b_cp_slot[quadidx][c], dx[rslot], Y[a], DY[a], chimes_4b_cutoff[quadidx][1][tab_4b_cp_canon_to_param[quadidx][c]]);
     }
 
     double dE_pair[6] =
@@ -5361,38 +5308,45 @@ void chimesFF::compute_4B_cp_tab_from_triplet_reuse(
     };
 
     double e4 = 0.0;
+    double gl0 = 0.0, gl1 = 0.0, gl2 = 0.0;
+    double gr0 = 0.0, gr1 = 0.0, gr2 = 0.0;
 
-    for (int q = 0; q < R; q++)
     {
-        const double L  = reuse.X[q];
-        const double L0 = reuse.X0[q];
-        const double L1 = reuse.X1[q];
-        const double L2 = reuse.X2[q];
+        const double * __restrict LX  = reuse.X.data();
+        const double * __restrict LX0 = reuse.X0.data();
+        const double * __restrict LX1 = reuse.X1.data();
+        const double * __restrict LX2 = reuse.X2.data();
+        const double * __restrict y0p = Y[0];
+        const double * __restrict y1p = Y[1];
+        const double * __restrict y2p = Y[2];
+        const double * __restrict d0p = DY[0];
+        const double * __restrict d1p = DY[1];
+        const double * __restrict d2p = DY[2];
 
-        const double y0 = Y[0][q];
-        const double y1 = Y[1][q];
-        const double y2 = Y[2][q];
+        for (int q = 0; q < R; q++)
+        {
+            const double y12   = y1p[q] * y2p[q];
+            const double Rprod = y0p[q] * y12;
+            const double L     = LX[q];
 
-        const double d0 = DY[0][q];
-        const double d1 = DY[1][q];
-        const double d2 = DY[2][q];
+            e4  += L * Rprod;
+            gl0 += LX0[q] * Rprod;
+            gl1 += LX1[q] * Rprod;
+            gl2 += LX2[q] * Rprod;
 
-        const double Rprod = y0 * y1 * y2;
-
-        const double R0 = d0 * y1 * y2;
-        const double R1 = y0 * d1 * y2;
-        const double R2 = y0 * y1 * d2;
-
-        e4 += L * Rprod;
-
-        dE_pair[reuse.left_runtime[0]]  += L0 * Rprod;
-        dE_pair[reuse.left_runtime[1]]  += L1 * Rprod;
-        dE_pair[reuse.left_runtime[2]]  += L2 * Rprod;
-
-        dE_pair[reuse.right_runtime[0]] += L * R0;
-        dE_pair[reuse.right_runtime[1]] += L * R1;
-        dE_pair[reuse.right_runtime[2]] += L * R2;
+            const double Ly0 = L * y0p[q];
+            gr0 += L * d0p[q] * y12;
+            gr1 += Ly0 * d1p[q] * y2p[q];
+            gr2 += Ly0 * y1p[q] * d2p[q];
+        }
     }
+
+    dE_pair[reuse.left_runtime[0]]  += gl0;
+    dE_pair[reuse.left_runtime[1]]  += gl1;
+    dE_pair[reuse.left_runtime[2]]  += gl2;
+    dE_pair[reuse.right_runtime[0]] += gr0;
+    dE_pair[reuse.right_runtime[1]] += gr1;
+    dE_pair[reuse.right_runtime[2]] += gr2;
 
     energy += e4;
 
@@ -5401,27 +5355,12 @@ void chimesFF::compute_4B_cp_tab_from_triplet_reuse(
     for (int p = 0; p < 6; p++)
         fs[p] = dE_pair[p] / dx[p];
 
-    chimes_accumulate_4b_force_stress_from_scalars(
-        dr,
-        fs,
-        force,
-        stress
-    );
+    chimes_accumulate_4b_force_stress_from_scalars(dr, fs, force, stress);
 }
 #endif
 
 #ifdef TABULATION
-void chimesFF::eval_4B_cp_direct_slot(
-    int quadidx,
-    int canon_slot,
-    int runtime_slot,
-    double r,
-    const std::vector<int> & typ_idxs,
-    const std::vector<int> & mapped_pair_idx,
-    chimes4BTmp & tmp,
-    double *X,
-    double *D
-)
+void chimesFF::eval_4B_cp_direct_slot(int quadidx, int canon_slot, int runtime_slot, double r, const std::vector<int> & typ_idxs, const std::vector<int> & mapped_pair_idx, chimes4BTmp & tmp, double *X, double *D)
 {
     const int R = tab_4b_cp_direct_rank[quadidx];
 
@@ -5491,27 +5430,14 @@ void chimesFF::eval_4B_cp_direct_slot(
     if ((int)Tnd.size() < order + 1)
         Tnd.resize(order + 1);
 
-    set_cheby_polys(
-        Tn,
-        Tnd,
-        r,
-        morse_var[pair_type],
-        rmin,
-        rmax,
-        order
-    );
+    set_cheby_polys(Tn, Tnd, r, morse_var[pair_type], rmin, rmax, order);
 
     double fcut;
     double fcutderiv;
 
-    get_fcut(
-        r,
-        rmax,
-        fcut,
-        fcutderiv
-    );
+    get_fcut(r, rmax, fcut, fcutderiv);
 
-    const std::vector<float> &A =
+    const std::vector<chimes_tab_real> &A =
         tab_4b_cp_direct_factor[quadidx][canon_slot];
 
     for (int p = 0; p <= order; p++)
@@ -5537,12 +5463,7 @@ void chimesFF::eval_4B_cp_direct_slot(
 #endif
 
 #ifdef TABULATION
-bool chimesFF::prepare_4B_cp_direct_triplet_reuse(
-    const std::vector<double> & dx_trip_013,
-    const std::vector<int> & typ_idxs,
-    chimes4BTmp & tmp,
-    chimes4BTripletReuseTmp & reuse
-)
+bool chimesFF::prepare_4B_cp_direct_triplet_reuse(const std::vector<double> & dx_trip_013, const std::vector<int> & typ_idxs, chimes4BTmp & tmp, chimes4BTripletReuseTmp & reuse)
 {
     reuse.clear();
 
@@ -5560,24 +5481,19 @@ bool chimesFF::prepare_4B_cp_direct_triplet_reuse(
     if (quadidx < 0)
         return false;
 
-    if ((int)tab_4b_cp_direct_rank.size() <= quadidx ||
-        tab_4b_cp_direct_rank[quadidx] <= 0)
+    if ((int)tab_4b_cp_direct_rank.size() <= quadidx || tab_4b_cp_direct_rank[quadidx] <= 0)
         return false;
 
-    if ((int)tab_4b_cp_direct_canon_to_param.size() <= quadidx ||
-        (int)tab_4b_cp_direct_canon_to_param[quadidx].size() != 6)
+    if ((int)tab_4b_cp_direct_canon_to_param.size() <= quadidx || (int)tab_4b_cp_direct_canon_to_param[quadidx].size() != 6)
         return false;
 
-    if ((int)tab_4b_cp_direct_orders.size() <= quadidx ||
-        (int)tab_4b_cp_direct_orders[quadidx].size() != 6)
+    if ((int)tab_4b_cp_direct_orders.size() <= quadidx || (int)tab_4b_cp_direct_orders[quadidx].size() != 6)
         return false;
 
-    if ((int)tab_4b_cp_direct_factor.size() <= quadidx ||
-        (int)tab_4b_cp_direct_factor[quadidx].size() != 6)
+    if ((int)tab_4b_cp_direct_factor.size() <= quadidx || (int)tab_4b_cp_direct_factor[quadidx].size() != 6)
         return false;
 
-    if ((int)pair_int_quad_map.size() <= idx ||
-        (int)pair_int_quad_map[idx].size() != 6)
+    if ((int)pair_int_quad_map.size() <= idx || (int)pair_int_quad_map[idx].size() != 6)
         return false;
 
     std::vector<int> & mapped_pair_idx = pair_int_quad_map[idx];
@@ -5666,17 +5582,7 @@ bool chimesFF::prepare_4B_cp_direct_triplet_reuse(
         if (!chimes_triplet_dx_from_runtime_slot(rslot, dx_trip_013, r))
             return false;
 
-        eval_4B_cp_direct_slot(
-            quadidx,
-            c,
-            rslot,
-            r,
-            typ_idxs,
-            mapped_pair_idx,
-            tmp,
-            X[a],
-            D[a]
-        );
+        eval_4B_cp_direct_slot(quadidx, c, rslot, r, typ_idxs, mapped_pair_idx, tmp, X[a], D[a]);
     }
 
     reuse.valid = true;
@@ -5720,16 +5626,7 @@ bool chimesFF::prepare_4B_cp_direct_triplet_reuse(
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_direct_from_triplet_reuse(
-    const std::vector<double> & dx,
-    const std::vector<double> & dr,
-    const std::vector<int> & typ_idxs,
-    const chimes4BTripletReuseTmp & reuse,
-    std::vector<double> & force,
-    std::vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_cp_direct_from_triplet_reuse(const std::vector<double> & dx, const std::vector<double> & dr, const std::vector<int> & typ_idxs, const chimes4BTripletReuseTmp & reuse, std::vector<double> & force, std::vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     if (!reuse.valid || !reuse.use_cp_direct)
         return;
@@ -5802,17 +5699,7 @@ void chimesFF::compute_4B_cp_direct_from_triplet_reuse(
         const int rslot = reuse.right_runtime[a];
         const int c = runtime_to_canon[rslot];
 
-        eval_4B_cp_direct_slot(
-            quadidx,
-            c,
-            rslot,
-            dx[rslot],
-            typ_idxs,
-            mapped_pair_idx,
-            tmp,
-            Y[a],
-            DY[a]
-        );
+        eval_4B_cp_direct_slot(quadidx, c, rslot, dx[rslot], typ_idxs, mapped_pair_idx, tmp, Y[a], DY[a]);
     }
 
     double dE_pair[6] =
@@ -5821,38 +5708,45 @@ void chimesFF::compute_4B_cp_direct_from_triplet_reuse(
     };
 
     double e4 = 0.0;
+    double gl0 = 0.0, gl1 = 0.0, gl2 = 0.0;
+    double gr0 = 0.0, gr1 = 0.0, gr2 = 0.0;
 
-    for (int q = 0; q < R; q++)
     {
-        const double L  = reuse.X[q];
-        const double L0 = reuse.X0[q];
-        const double L1 = reuse.X1[q];
-        const double L2 = reuse.X2[q];
+        const double * __restrict LX  = reuse.X.data();
+        const double * __restrict LX0 = reuse.X0.data();
+        const double * __restrict LX1 = reuse.X1.data();
+        const double * __restrict LX2 = reuse.X2.data();
+        const double * __restrict y0p = Y[0];
+        const double * __restrict y1p = Y[1];
+        const double * __restrict y2p = Y[2];
+        const double * __restrict d0p = DY[0];
+        const double * __restrict d1p = DY[1];
+        const double * __restrict d2p = DY[2];
 
-        const double y0 = Y[0][q];
-        const double y1 = Y[1][q];
-        const double y2 = Y[2][q];
+        for (int q = 0; q < R; q++)
+        {
+            const double y12   = y1p[q] * y2p[q];
+            const double Rprod = y0p[q] * y12;
+            const double L     = LX[q];
 
-        const double d0 = DY[0][q];
-        const double d1 = DY[1][q];
-        const double d2 = DY[2][q];
+            e4  += L * Rprod;
+            gl0 += LX0[q] * Rprod;
+            gl1 += LX1[q] * Rprod;
+            gl2 += LX2[q] * Rprod;
 
-        const double Rprod = y0 * y1 * y2;
-
-        const double R0 = d0 * y1 * y2;
-        const double R1 = y0 * d1 * y2;
-        const double R2 = y0 * y1 * d2;
-
-        e4 += L * Rprod;
-
-        dE_pair[reuse.left_runtime[0]]  += L0 * Rprod;
-        dE_pair[reuse.left_runtime[1]]  += L1 * Rprod;
-        dE_pair[reuse.left_runtime[2]]  += L2 * Rprod;
-
-        dE_pair[reuse.right_runtime[0]] += L * R0;
-        dE_pair[reuse.right_runtime[1]] += L * R1;
-        dE_pair[reuse.right_runtime[2]] += L * R2;
+            const double Ly0 = L * y0p[q];
+            gr0 += L * d0p[q] * y12;
+            gr1 += Ly0 * d1p[q] * y2p[q];
+            gr2 += Ly0 * y1p[q] * d2p[q];
+        }
     }
+
+    dE_pair[reuse.left_runtime[0]]  += gl0;
+    dE_pair[reuse.left_runtime[1]]  += gl1;
+    dE_pair[reuse.left_runtime[2]]  += gl2;
+    dE_pair[reuse.right_runtime[0]] += gr0;
+    dE_pair[reuse.right_runtime[1]] += gr1;
+    dE_pair[reuse.right_runtime[2]] += gr2;
 
     energy += e4;
 
@@ -5861,52 +5755,21 @@ void chimesFF::compute_4B_cp_direct_from_triplet_reuse(
     for (int p = 0; p < 6; p++)
         fs[p] = dE_pair[p] / dx[p];
 
-    chimes_accumulate_4b_force_stress_from_scalars(
-        dr,
-        fs,
-        force,
-        stress
-    );
+    chimes_accumulate_4b_force_stress_from_scalars(dr, fs, force, stress);
 }
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_direct(
-    const std::vector<double> & dx,
-    const std::vector<double> & dr,
-    const std::vector<int> & typ_idxs,
-    std::vector<double> & force,
-    std::vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_cp_direct(const std::vector<double> & dx, const std::vector<double> & dr, const std::vector<int> & typ_idxs, std::vector<double> & force, std::vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     std::vector<double> dummy_force_scalar(6);
 
-    compute_4B_cp_direct(
-        dx,
-        dr,
-        typ_idxs,
-        force,
-        stress,
-        energy,
-        tmp,
-        dummy_force_scalar
-    );
+    compute_4B_cp_direct(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 #endif
 
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_direct(
-    const std::vector<double> & dx,
-    const std::vector<double> & dr,
-    const std::vector<int> & typ_idxs,
-    std::vector<double> & force,
-    std::vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    std::vector<double> & force_scalar_in
-)
+void chimesFF::compute_4B_cp_direct(const std::vector<double> & dx, const std::vector<double> & dr, const std::vector<int> & typ_idxs, std::vector<double> & force, std::vector<double> & stress, double & energy, chimes4BTmp & tmp, std::vector<double> & force_scalar_in)
 {
     const int npairs = 6;
 
@@ -5921,19 +5784,9 @@ void chimesFF::compute_4B_cp_direct(
     if (quadidx < 0)
         return;
 
-    if ((int)tab_4b_cp_direct_rank.size() <= quadidx ||
-        tab_4b_cp_direct_rank[quadidx] <= 0)
+    if ((int)tab_4b_cp_direct_rank.size() <= quadidx || tab_4b_cp_direct_rank[quadidx] <= 0)
     {
-        compute_4B(
-            dx,
-            dr,
-            typ_idxs,
-            force,
-            stress,
-            energy,
-            tmp,
-            force_scalar_in
-        );
+        compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
         return;
     }
 
@@ -5961,21 +5814,8 @@ void chimesFF::compute_4B_cp_direct(
      *
      * mapped_pair_idx[rslot] = parameter pair slot.
      */
-    int param_to_runtime[6];
-
-    for (int rslot = 0; rslot < 6; rslot++)
-        param_to_runtime[mapped_pair_idx[rslot]] = rslot;
-
-    /*
-     * Canonical CP slot -> runtime slot.
-     */
-    int canon_to_runtime[6];
-
-    for (int c = 0; c < 6; c++)
-    {
-        const int pslot = tab_4b_cp_direct_canon_to_param[quadidx][c];
-        canon_to_runtime[c] = param_to_runtime[pslot];
-    }
+    // Canonical CP slot -> runtime slot (cached per atom-type tuple).
+    const int *canon_to_runtime = cp_canon_to_runtime(idx, tab_4b_cp_direct_canon_to_param, tab_4b_cp_direct_c2r_cache);
 
     /*
      * Runtime pair type indices.
@@ -6080,25 +5920,12 @@ void chimesFF::compute_4B_cp_direct(
         if ((int)Tnd.size() < order + 1)
             Tnd.resize(order + 1);
 
-        set_cheby_polys(
-            Tn,
-            Tnd,
-            r,
-            morse_var[pair_type],
-            rmin,
-            rmax,
-            order
-        );
+        set_cheby_polys(Tn, Tnd, r, morse_var[pair_type], rmin, rmax, order);
 
         double fcut;
         double fcutderiv;
 
-        get_fcut(
-            r,
-            rmax,
-            fcut,
-            fcutderiv
-        );
+        get_fcut(r, rmax, fcut, fcutderiv);
 
         for (int q = 0; q < R; q++)
         {
@@ -6106,7 +5933,7 @@ void chimesFF::compute_4B_cp_direct(
             D[c][q] = 0.0;
         }
 
-        const std::vector<float> &A =
+        const std::vector<chimes_tab_real> &A =
             tab_4b_cp_direct_factor[quadidx][c];
 
         for (int p = 0; p <= order; p++)
@@ -6135,43 +5962,9 @@ void chimesFF::compute_4B_cp_direct(
      */
     double e4 = 0.0;
 
-    double dE_canon[6] =
-    {
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    };
+    double dE_canon[6];
 
-    for (int q = 0; q < R; q++)
-    {
-        const double x0 = X[0][q];
-        const double x1 = X[1][q];
-        const double x2 = X[2][q];
-        const double x3 = X[3][q];
-        const double x4 = X[4][q];
-        const double x5 = X[5][q];
-
-        const double d0 = D[0][q];
-        const double d1 = D[1][q];
-        const double d2 = D[2][q];
-        const double d3 = D[3][q];
-        const double d4 = D[4][q];
-        const double d5 = D[5][q];
-
-        const double x01 = x0 * x1;
-        const double x23 = x2 * x3;
-        const double x45 = x4 * x5;
-
-        const double prod =
-            x01 * x23 * x45;
-
-        e4 += prod;
-
-        dE_canon[0] += d0 * x1 * x23 * x45;
-        dE_canon[1] += x0 * d1 * x23 * x45;
-        dE_canon[2] += x01 * d2 * x3 * x45;
-        dE_canon[3] += x01 * x2 * d3 * x45;
-        dE_canon[4] += x01 * x23 * d4 * x5;
-        dE_canon[5] += x01 * x23 * x4 * d5;
-    }
+    cp4_contract(X, D, R, e4, dE_canon);
 
     energy += e4;
 
@@ -6194,12 +5987,7 @@ void chimesFF::compute_4B_cp_direct(
     for (int rslot = 0; rslot < 6; rslot++)
         force_scalar[rslot] = dE_runtime[rslot] / dx[rslot];
 
-    chimes_accumulate_4b_force_stress_from_scalars(
-        dr,
-        force_scalar,
-        force,
-        stress
-    );
+    chimes_accumulate_4b_force_stress_from_scalars(dr, force_scalar, force, stress);
 
     for (int rslot = 0; rslot < 6; rslot++)
         force_scalar_in[rslot] = force_scalar[rslot];
@@ -6252,10 +6040,7 @@ void chimesFF::read_4B_cp_meta(string meta_file, int quadidx)
             for (int i=1; i<n; i++)
                 canon_to_param.push_back(stoi(items[i]));
         }
-        else if (
-            items[0] == "pair_types_canonical" ||
-            items[0] == "canonical_pair_types"
-        )
+        else if (items[0] == "pair_types_canonical" || items[0] == "canonical_pair_types")
         {
             canonical_pair_types.clear();
             for (int i=1; i<n; i++)
@@ -6313,8 +6098,7 @@ void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
         exit(0);
     }
 
-    if ((int)tab_4b_cp_rank.size() <= quadidx ||
-        tab_4b_cp_rank[quadidx] <= 0)
+    if ((int)tab_4b_cp_rank.size() <= quadidx || tab_4b_cp_rank[quadidx] <= 0)
     {
         cout << "ERROR: Must read CP metadata before CP data file for quad type "
              << quadidx << endl;
@@ -6347,8 +6131,7 @@ void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
     tab.rank = Q;
     tab.ngrid = nrows;
 
-    tab.val.resize((size_t)nrows * (size_t)Q);
-    tab.der.resize((size_t)nrows * (size_t)Q);
+    tab.vd.resize((size_t)nrows * (size_t)(2*Q));
 
     for (int row=0; row<nrows; row++)
     {
@@ -6374,16 +6157,11 @@ void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
         if (row == 1)
             tab.dr = x - tab.r0;
 
-        size_t off = (size_t)row * (size_t)Q;
+        size_t off = (size_t)row * (size_t)(2*Q);
 
-        int start_val = 1;
-        int start_der = 1 + Q;
-
-        for (int q=0; q<Q; q++)
-        {
-            tab.val[off+q] = static_cast<float>(stod(items[start_val + q]));
-            tab.der[off+q] = static_cast<float>(stod(items[start_der + q]));
-        }
+        // Row layout in the file: r  val[0..Q-1]  der[0..Q-1]
+        for (int q=0; q<2*Q; q++)
+            tab.vd[off+q] = static_cast<chimes_tab_real>(stod(items[1 + q]));
     }
 
     in.close();
@@ -6408,130 +6186,118 @@ void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
 }
 #endif
 #ifdef TABULATION
-void chimesFF::interpolateCP1DLinear(
-    const CP1DTable &tab,
-    double rquery,
-    double *val,
-    double *der
-)
+void chimesFF::interpolateCP1DLinear(const CP1DTable &tab, double rquery, double *val, double *der, double rc)
 {
+    // Cubic Hermite interpolation from tabulated values and r-derivatives
+    // (C1 continuous; the returned derivative is the exact derivative of the
+    // returned value, so forces stay consistent with energies).
+    //
+    // Below the first grid point (= the slot's inner cutoff when the table is
+    // generated with util/tensor_tools/cp_fit.py) the function is continued
+    // exactly like chimesFF::set_polys_out_of_range does for the polynomials:
+    //   X(r)  = X(r0) + s (exp((r-r0)/s) - 1) X'(r0),   X'(r) = exp((r-r0)/s) X'(r0)
+    // with s = inner_smooth_distance.  This is exact whenever fcut == 1 near
+    // the inner cutoff (all Tersoff-cutoff models).
+
     const int Q = tab.rank;
     const int ngrid = tab.ngrid;
 
-    int i = (int)((rquery - tab.r0) * tab.invdr);
+    const double s = (rquery - tab.r0) * tab.invdr;
 
-    if (i < 0)
+    int i = (int)s;
+    bool below = false;
+
+    if (s < 0.0)
+    {
         i = 0;
-
+        below = true;
+    }
     if (i > ngrid - 2)
         i = ngrid - 2;
 
-    const double h = tab.dr;
-    const double invh = tab.invdr;
+    const chimes_tab_real * __restrict R0 = tab.vd.data() + (size_t)i * (size_t)(2*Q);
+    const chimes_tab_real * __restrict R1 = R0 + 2*Q;
 
-    double t = (rquery - (tab.r0 + i*h)) * invh;
+    if (below)
+    {
+        const double sm   = inner_smooth_distance;
+        const double damp = exp((rquery - tab.r0) / sm);
+        const double a    = sm * (damp - 1.0);
 
-    if (t < 0.0)
-        t = 0.0;
+        // The table holds g(r) = fcut(r) p(r).  chimesFF continues the
+        // polynomial part p below the inner cutoff and multiplies by fcut at
+        // the actual r, so undo fcut at r0 first when it is not 1 there
+        // (cubic cutoff; for Tersoff fcut(r0) = 1 and this reduces to the
+        // plain continuation).
+        double f0 = 1.0, fd0 = 0.0, f = 1.0, fd = 0.0;
+        if (rc > tab.r0)
+        {
+            get_fcut(tab.r0, rc, f0, fd0);
+            get_fcut(rquery, rc, f, fd);
+        }
+        if (f0 != 1.0 || fd0 != 0.0)
+        {
+            const double inv_f0 = 1.0 / f0;
+            for (int q = 0; q < Q; q++)
+            {
+                const double p0  = (double)R0[q] * inv_f0;
+                const double pd0 = ((double)R0[Q + q] - fd0 * p0) * inv_f0;
+                const double p   = p0 + a * pd0;
+                val[q] = f * p;
+                der[q] = fd * p + f * damp * pd0;
+            }
+            return;
+        }
+        for (int q = 0; q < Q; q++)
+        {
+            val[q] = (double)R0[q] + a * (double)R0[Q + q];
+            der[q] = damp * (double)R0[Q + q];
+        }
+        return;
+    }
 
+    double t = s - i;
     if (t > 1.0)
         t = 1.0;
+
+    const double h    = tab.dr;
+    const double invh = tab.invdr;
 
     const double t2 = t * t;
     const double t3 = t2 * t;
 
-    /*
-     * Cubic Hermite basis:
-     *
-     * y(t) =
-     *     h00(t) y0
-     *   + h10(t) h m0
-     *   + h01(t) y1
-     *   + h11(t) h m1
-     *
-     * where m0 = dy/dr at r0 and m1 = dy/dr at r1.
-     *
-     * dy/dr =
-     *     dh00/dt * y0 / h
-     *   + dh10/dt * m0
-     *   + dh01/dt * y1 / h
-     *   + dh11/dt * m1
-     */
-
     const double h00 =  2.0*t3 - 3.0*t2 + 1.0;
-    const double h10 =        t3 - 2.0*t2 + t;
+    const double h10 = (t3 - 2.0*t2 + t) * h;
     const double h01 = -2.0*t3 + 3.0*t2;
-    const double h11 =        t3 -       t2;
+    const double h11 = (t3 - t2) * h;
 
-    const double dh00_dr = ( 6.0*t2 - 6.0*t) * invh;
-    const double dh10_dt =   3.0*t2 - 4.0*t + 1.0;
-    const double dh01_dr = (-6.0*t2 + 6.0*t) * invh;
-    const double dh11_dt =   3.0*t2 - 2.0*t;
-
-    const size_t off0 = (size_t)i       * (size_t)Q;
-    const size_t off1 = (size_t)(i + 1) * (size_t)Q;
-
-    const float *V = tab.val.data();
-    const float *D = tab.der.data();
+    const double g00 = ( 6.0*t2 - 6.0*t) * invh;
+    const double g10 =   3.0*t2 - 4.0*t + 1.0;
+    const double g01 = -g00;
+    const double g11 =   3.0*t2 - 2.0*t;
 
     for (int q = 0; q < Q; q++)
     {
-        const double y0 = (double)V[off0 + q];
-        const double y1 = (double)V[off1 + q];
+        const double y0 = (double)R0[q];
+        const double m0 = (double)R0[Q + q];
+        const double y1 = (double)R1[q];
+        const double m1 = (double)R1[Q + q];
 
-        const double m0 = (double)D[off0 + q];
-        const double m1 = (double)D[off1 + q];
-
-        val[q] =
-            h00 * y0 +
-            h10 * h * m0 +
-            h01 * y1 +
-            h11 * h * m1;
-
-        der[q] =
-            dh00_dr * y0 +
-            dh10_dt * m0 +
-            dh01_dr * y1 +
-            dh11_dt * m1;
+        val[q] = h00*y0 + h10*m0 + h01*y1 + h11*m1;
+        der[q] = g00*y0 + g10*m0 + g01*y1 + g11*m1;
     }
 }
 #endif
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_cp_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     vector<double> dummy_force_scalar(6);
 
-    compute_4B_cp_tab(
-        dx,
-        dr,
-        typ_idxs,
-        force,
-        stress,
-        energy,
-        tmp,
-        dummy_force_scalar
-    );
+    compute_4B_cp_tab(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar);
 }
 #endif
 #ifdef TABULATION
-void chimesFF::compute_4B_cp_tab(
-    const vector<double> & dx,
-    const vector<double> & dr,
-    const vector<int> & typ_idxs,
-    vector<double> & force,
-    vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp,
-    vector<double> & force_scalar_in
-)
+void chimesFF::compute_4B_cp_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp & tmp, vector<double> & force_scalar_in)
 {
     const int npairs = 6;
 
@@ -6545,8 +6311,7 @@ void chimesFF::compute_4B_cp_tab(
     if (quadidx < 0)
         return;
 
-    if ((int)tab_4b_cp_rank.size() <= quadidx ||
-        tab_4b_cp_rank[quadidx] <= 0)
+    if ((int)tab_4b_cp_rank.size() <= quadidx || tab_4b_cp_rank[quadidx] <= 0)
     {
         compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, force_scalar_in);
         return;
@@ -6561,25 +6326,8 @@ void chimesFF::compute_4B_cp_tab(
             return;
     }
 
-    // Build canonical-to-runtime map.
-    int param_to_runtime[6];
-
-    for (int r=0; r<6; r++)
-        param_to_runtime[mapped_pair_idx[r]] = r;
-
-    int canon_to_runtime[6];
-
-    for (int c=0; c<6; c++)
-    {
-        int pslot;
-
-        if ((int)tab_4b_cp_canon_to_param[quadidx].size() == 6)
-            pslot = tab_4b_cp_canon_to_param[quadidx][c];
-        else
-            pslot = c;
-
-        canon_to_runtime[c] = param_to_runtime[pslot];
-    }
+    // Canonical-to-runtime map (cached per atom-type tuple).
+    const int *canon_to_runtime = cp_canon_to_runtime(idx, tab_4b_cp_canon_to_param, tab_4b_cp_c2r_cache);
 
     const int Q = tab_4b_cp_rank[quadidx];
 
@@ -6610,52 +6358,14 @@ void chimesFF::compute_4B_cp_tab(
     {
         int rslot = canon_to_runtime[c];
 
-        interpolateCP1DLinear(
-            tab_4b_cp_slot[quadidx][c],
-            dx[rslot],
-            X[c],
-            D[c]
-        );
+        interpolateCP1DLinear(tab_4b_cp_slot[quadidx][c], dx[rslot], X[c], D[c], chimes_4b_cutoff[quadidx][1][tab_4b_cp_canon_to_param[quadidx][c]]);
     }
 
     double e4 = 0.0;
 
-    double dE_canon[6] =
-    {
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    };
+    double dE_canon[6];
 
-    for (int q=0; q<Q; q++)
-    {
-        const double x0 = X[0][q];
-        const double x1 = X[1][q];
-        const double x2 = X[2][q];
-        const double x3 = X[3][q];
-        const double x4 = X[4][q];
-        const double x5 = X[5][q];
-
-        const double d0 = D[0][q];
-        const double d1 = D[1][q];
-        const double d2 = D[2][q];
-        const double d3 = D[3][q];
-        const double d4 = D[4][q];
-        const double d5 = D[5][q];
-
-        const double x01 = x0 * x1;
-        const double x23 = x2 * x3;
-        const double x45 = x4 * x5;
-
-        const double prod = x01 * x23 * x45;
-
-        e4 += prod;
-
-        dE_canon[0] += d0 * x1 * x23 * x45;
-        dE_canon[1] += x0 * d1 * x23 * x45;
-        dE_canon[2] += x01 * d2 * x3 * x45;
-        dE_canon[3] += x01 * x2 * d3 * x45;
-        dE_canon[4] += x01 * x23 * d4 * x5;
-        dE_canon[5] += x01 * x23 * x4 * d5;
-    }
+    cp4_contract(X, D, Q, e4, dE_canon);
 
     energy += e4;
 
@@ -6672,12 +6382,7 @@ void chimesFF::compute_4B_cp_tab(
     for (int p=0; p<6; p++)
         force_scalar[p] = dE_pair[p] / dx[p];
 
-    chimes_accumulate_4b_force_stress_from_scalars(
-        dr,
-        force_scalar,
-        force,
-        stress
-    );
+    chimes_accumulate_4b_force_stress_from_scalars(dr, force_scalar, force, stress);
 
     for (int p=0; p<6; p++)
         force_scalar_in[p] = force_scalar[p];
@@ -6685,12 +6390,7 @@ void chimesFF::compute_4B_cp_tab(
 #endif
 
 
-bool chimesFF::prepare_4B_triplet_reuse(
-    const std::vector<double> & dx_trip_013,
-    const std::vector<int> & typ_idxs,
-    chimes4BTmp & tmp,
-    chimes4BTripletReuseTmp & reuse
-)
+bool chimesFF::prepare_4B_triplet_reuse(const std::vector<double> & dx_trip_013, const std::vector<int> & typ_idxs, chimes4BTmp & tmp, chimes4BTripletReuseTmp & reuse)
 {
     reuse.clear();
 
@@ -6739,36 +6439,20 @@ bool chimesFF::prepare_4B_triplet_reuse(
     //
     // If a CP representation exists for this quad type, either prepare CP
     // reuse or decline reuse. Do not fall through to another tabulation mode.
-    if (tabulate_4B_cp_direct &&
-        (int)tab_4b_cp_direct_rank.size() > quadidx &&
-        tab_4b_cp_direct_rank[quadidx] > 0)
+    if (tabulate_4B_cp_direct && (int)tab_4b_cp_direct_rank.size() > quadidx && tab_4b_cp_direct_rank[quadidx] > 0)
     {
-        return prepare_4B_cp_direct_triplet_reuse(
-            dx_trip_013,
-            typ_idxs,
-            tmp,
-            reuse
-        );
+        return prepare_4B_cp_direct_triplet_reuse(dx_trip_013, typ_idxs, tmp, reuse);
     }
 
-    if (tabulate_4B_cp &&
-        (int)tab_4b_cp_rank.size() > quadidx &&
-        tab_4b_cp_rank[quadidx] > 0)
+    if (tabulate_4B_cp && (int)tab_4b_cp_rank.size() > quadidx && tab_4b_cp_rank[quadidx] > 0)
     {
-        return prepare_4B_cp_tab_triplet_reuse(
-            dx_trip_013,
-            typ_idxs,
-            tmp,
-            reuse
-        );
+        return prepare_4B_cp_tab_triplet_reuse(dx_trip_013, typ_idxs, tmp, reuse);
     }
 #endif
 
 #ifdef TABULATION
     // Fast path for 1,2,4 SVD3x3 triplet-star tables.
-    if (tabulate_4B_svd3x3 &&
-        (int)tab_4b_svd3x3_rank.size() > quadidx &&
-        tab_4b_svd3x3_rank[quadidx] > 0)
+    if (tabulate_4B_svd3x3 && (int)tab_4b_svd3x3_rank.size() > quadidx && tab_4b_svd3x3_rank[quadidx] > 0)
     {
         int param_to_runtime[6];
 
@@ -6792,16 +6476,14 @@ bool chimesFF::prepare_4B_triplet_reuse(
         int left_dims[3]  = {0, 1, 3};
         int right_dims[3] = {2, 4, 5};
 
-        if ((int)tab_4b_svd3x3_left_dims.size() > quadidx &&
-            (int)tab_4b_svd3x3_left_dims[quadidx].size() == 3)
+        if ((int)tab_4b_svd3x3_left_dims.size() > quadidx && (int)tab_4b_svd3x3_left_dims[quadidx].size() == 3)
         {
             left_dims[0] = tab_4b_svd3x3_left_dims[quadidx][0];
             left_dims[1] = tab_4b_svd3x3_left_dims[quadidx][1];
             left_dims[2] = tab_4b_svd3x3_left_dims[quadidx][2];
         }
 
-        if ((int)tab_4b_svd3x3_right_dims.size() > quadidx &&
-            (int)tab_4b_svd3x3_right_dims[quadidx].size() == 3)
+        if ((int)tab_4b_svd3x3_right_dims.size() > quadidx && (int)tab_4b_svd3x3_right_dims[quadidx].size() == 3)
         {
             right_dims[0] = tab_4b_svd3x3_right_dims[quadidx][0];
             right_dims[1] = tab_4b_svd3x3_right_dims[quadidx][1];
@@ -6871,14 +6553,7 @@ bool chimesFF::prepare_4B_triplet_reuse(
         reuse.X1.resize(R);
         reuse.X2.resize(R);
 
-        interpolateSVD3x3SideLinear(
-            tab_4b_svd3x3_left[quadidx],
-            rleft,
-            reuse.X.data(),
-            reuse.X0.data(),
-            reuse.X1.data(),
-            reuse.X2.data()
-        );
+        interpolateSVD3x3SideLinear(tab_4b_svd3x3_left[quadidx], rleft, reuse.X.data(), reuse.X0.data(), reuse.X1.data(), reuse.X2.data());
 
         return true;
     }
@@ -6917,35 +6592,11 @@ bool chimesFF::prepare_4B_triplet_reuse(
     const double cutoff_ik_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[1]];
     const double cutoff_jk_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[3]];
 
-    set_cheby_polys(
-        Tn_ij,
-        Tnd_ij,
-        dx_trip_013[0],
-        morse_var[pair_type_ij],
-        cutoff_ij_inner,
-        cutoff_ij_outer,
-        order
-    );
+    set_cheby_polys(Tn_ij, Tnd_ij, dx_trip_013[0], morse_var[pair_type_ij], cutoff_ij_inner, cutoff_ij_outer, order);
 
-    set_cheby_polys(
-        Tn_ik,
-        Tnd_ik,
-        dx_trip_013[1],
-        morse_var[pair_type_ik],
-        cutoff_ik_inner,
-        cutoff_ik_outer,
-        order
-    );
+    set_cheby_polys(Tn_ik, Tnd_ik, dx_trip_013[1], morse_var[pair_type_ik], cutoff_ik_inner, cutoff_ik_outer, order);
 
-    set_cheby_polys(
-        Tn_jk,
-        Tnd_jk,
-        dx_trip_013[2],
-        morse_var[pair_type_jk],
-        cutoff_jk_inner,
-        cutoff_jk_outer,
-        order
-    );
+    set_cheby_polys(Tn_jk, Tnd_jk, dx_trip_013[2], morse_var[pair_type_jk], cutoff_jk_inner, cutoff_jk_outer, order);
 
     double fcut_ij, fcutderiv_ij;
     double fcut_ik, fcutderiv_ik;
@@ -7007,36 +6658,19 @@ bool chimesFF::prepare_4B_triplet_reuse(
         reuse.p_jl.push_back(p_jl);
         reuse.p_kl.push_back(p_kl);
 
-        reuse.A.push_back(
-            coeff * G_ij * G_ik * G_jk
-        );
+        reuse.A.push_back(coeff * G_ij * G_ik * G_jk);
 
-        reuse.A_ij.push_back(
-            coeff * dG_ij * G_ik * G_jk
-        );
+        reuse.A_ij.push_back(coeff * dG_ij * G_ik * G_jk);
 
-        reuse.A_ik.push_back(
-            coeff * G_ij * dG_ik * G_jk
-        );
+        reuse.A_ik.push_back(coeff * G_ij * dG_ik * G_jk);
 
-        reuse.A_jk.push_back(
-            coeff * G_ij * G_ik * dG_jk
-        );
+        reuse.A_jk.push_back(coeff * G_ij * G_ik * dG_jk);
     }
 
     return true;
 }
 
-void chimesFF::compute_4B_from_triplet_reuse(
-    const std::vector<double> & dx,
-    const std::vector<double> & dr,
-    const std::vector<int> & typ_idxs,
-    const chimes4BTripletReuseTmp & reuse,
-    std::vector<double> & force,
-    std::vector<double> & stress,
-    double & energy,
-    chimes4BTmp & tmp
-)
+void chimesFF::compute_4B_from_triplet_reuse(const std::vector<double> & dx, const std::vector<double> & dr, const std::vector<int> & typ_idxs, const chimes4BTripletReuseTmp & reuse, std::vector<double> & force, std::vector<double> & stress, double & energy, chimes4BTmp & tmp)
 {
     if (!reuse.valid)
         return;
@@ -7066,32 +6700,14 @@ void chimesFF::compute_4B_from_triplet_reuse(
 #ifdef TABULATION
     if (reuse.use_cp_direct)
     {
-        compute_4B_cp_direct_from_triplet_reuse(
-            dx,
-            dr,
-            typ_idxs,
-            reuse,
-            force,
-            stress,
-            energy,
-            tmp
-        );
+        compute_4B_cp_direct_from_triplet_reuse(dx, dr, typ_idxs, reuse, force, stress, energy, tmp);
 
         return;
     }
 
     if (reuse.use_cp_tab)
     {
-        compute_4B_cp_tab_from_triplet_reuse(
-            dx,
-            dr,
-            typ_idxs,
-            reuse,
-            force,
-            stress,
-            energy,
-            tmp
-        );
+        compute_4B_cp_tab_from_triplet_reuse(dx, dr, typ_idxs, reuse, force, stress, energy, tmp);
 
         return;
     }
@@ -7114,14 +6730,7 @@ void chimesFF::compute_4B_from_triplet_reuse(
         double *Y1 = tmp.svd_Y1.data();
         double *Y2 = tmp.svd_Y2.data();
 
-        interpolateSVD3x3SideLinear(
-            tab_4b_svd3x3_right[quadidx],
-            rright,
-            Y,
-            Y0,
-            Y1,
-            Y2
-        );
+        interpolateSVD3x3SideLinear(tab_4b_svd3x3_right[quadidx], rright, Y, Y0, Y1, Y2);
 
         double e4 = 0.0;
 
@@ -7171,12 +6780,7 @@ void chimesFF::compute_4B_from_triplet_reuse(
         for (int p = 0; p < 6; p++)
             fs[p] = dE_pair[p] / dx[p];
 
-        chimes_accumulate_4b_force_stress_from_scalars(
-            dr,
-            fs,
-            force,
-            stress
-        );
+        chimes_accumulate_4b_force_stress_from_scalars(dr, fs, force, stress);
 
         return;
     }
@@ -7205,35 +6809,11 @@ void chimesFF::compute_4B_from_triplet_reuse(
     const double cutoff_jl_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[4]];
     const double cutoff_kl_inner = chimes_4b_cutoff[quadidx][0][mapped_pair_idx[5]];
 
-    set_cheby_polys(
-        Tn_il,
-        Tnd_il,
-        dx[2],
-        morse_var[pair_type_il],
-        cutoff_il_inner,
-        cutoff_il_outer,
-        order
-    );
+    set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_il], cutoff_il_inner, cutoff_il_outer, order);
 
-    set_cheby_polys(
-        Tn_jl,
-        Tnd_jl,
-        dx[4],
-        morse_var[pair_type_jl],
-        cutoff_jl_inner,
-        cutoff_jl_outer,
-        order
-    );
+    set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_jl], cutoff_jl_inner, cutoff_jl_outer, order);
 
-    set_cheby_polys(
-        Tn_kl,
-        Tnd_kl,
-        dx[5],
-        morse_var[pair_type_kl],
-        cutoff_kl_inner,
-        cutoff_kl_outer,
-        order
-    );
+    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_kl], cutoff_kl_inner, cutoff_kl_outer, order);
 
     double fcut_il, fcutderiv_il;
     double fcut_jl, fcutderiv_jl;
@@ -7304,31 +6884,26 @@ void chimesFF::compute_4B_from_triplet_reuse(
     for (int p = 0; p < 6; p++)
         fs[p] = dE_pair[p] / dx[p];
 
-    chimes_accumulate_4b_force_stress_from_scalars(
-        dr,
-        fs,
-        force,
-        stress
-    );
+    chimes_accumulate_4b_force_stress_from_scalars(dr, fs, force, stress);
 }
 
 void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp &tmp)
-{              
-        vector<double> dummy_force_scalar(6);
-    #ifdef FINGERPRINT
-        vector<vector<double>> dummy_clusters_4b;
-        bool dummy_fingerprint;
-    #endif
-        compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
-                    #ifdef FINGERPRINT
-                        , dummy_clusters_4b, dummy_fingerprint
-                    #endif
-                    );                                                               
+{
+    vector<double> dummy_force_scalar(6);
+#ifdef FINGERPRINT
+    vector<vector<double>> dummy_clusters_4b;
+    bool dummy_fingerprint;
+#endif
+    compute_4B(dx, dr, typ_idxs, force, stress, energy, tmp, dummy_force_scalar
+#ifdef FINGERPRINT
+                    , dummy_clusters_4b, dummy_fingerprint
+#endif
+                );
 }
 void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes4BTmp &tmp, vector<double> & force_scalar_in
-                            #ifdef FINGERPRINT
+#ifdef FINGERPRINT
                                 , vector<vector<double>> & clusters_4b, bool fingerprint
-                            #endif
+#endif
                             )
 {
     // Compute 3b (input: 3 atoms or distances, corresponding types... outputs (updates) force, acceleration, energy, stress
@@ -7353,28 +6928,28 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     double fcut[npairs] ;
     double fcutderiv[npairs] ;
     double deriv[npairs] ;
-    
 
-#if DEBUG == 1  
+
+#if DEBUG == 1
     if ( force.size() != CHDIM * natoms ) {
         cout << "Error: force vector had incorrect dimension of " << force.size() << endl ;
         exit(1) ;
     }
-#endif      
+#endif
 
     vector<double> &Tn_ij   = tmp.Tn_ij ;
     vector<double> &Tn_ik   = tmp.Tn_ik ;
     vector<double> &Tn_il   = tmp.Tn_il ;
     vector<double> &Tn_jk   = tmp.Tn_jk ;
     vector<double> &Tn_jl   = tmp.Tn_jl ;
-    vector<double> &Tn_kl   = tmp.Tn_kl ;        
-                                          
+    vector<double> &Tn_kl   = tmp.Tn_kl ;
+
     vector<double> &Tnd_ij  = tmp.Tnd_ij ;
     vector<double> &Tnd_ik  = tmp.Tnd_ik ;
-    vector<double> &Tnd_il  = tmp.Tnd_il ;  
+    vector<double> &Tnd_il  = tmp.Tnd_il ;
     vector<double> &Tnd_jk  = tmp.Tnd_jk ;
     vector<double> &Tnd_jl  = tmp.Tnd_jl ;
-    vector<double> &Tnd_kl  = tmp.Tnd_kl ;            
+    vector<double> &Tnd_kl  = tmp.Tnd_kl ;
 
     int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps
         + typ_idxs[1]*natmtyps*natmtyps + typ_idxs[2]*natmtyps + typ_idxs[3] ;
@@ -7387,34 +6962,34 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     vector<int> & mapped_pair_idx = pair_int_quad_map[idx] ;
 
     // Check whether cutoffs are within allowed ranges
-/*
-    for(int i=0; i<npairs; i++)
-        if (dx[i] >= chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[i]])
-            return;    
-*/
+    /*
+        for(int i=0; i<npairs; i++)
+            if (dx[i] >= chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[i]])
+                return;
+    */
     // These speed up fcut calculations by a LOT
-     double cutoff_0  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[0]];
-     double cutoff_00 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[0]];
+    double cutoff_0  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[0]];
+    double cutoff_00 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[0]];
     if (dx[0] >= cutoff_0)    // ij
-        return;    
-     double cutoff_1  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[1]];
-     double cutoff_01 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[1]];
+        return;
+    double cutoff_1  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[1]];
+    double cutoff_01 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[1]];
     if (dx[1] >= cutoff_1)    // ik
-        return;    
-     double cutoff_2  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[2]];
-     double cutoff_02 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[2]];
+        return;
+    double cutoff_2  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[2]];
+    double cutoff_02 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[2]];
     if (dx[2] >= cutoff_2)    // il
         return;
-     double cutoff_3  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[3]];
-     double cutoff_03 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[3]];
+    double cutoff_3  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[3]];
+    double cutoff_03 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[3]];
     if (dx[3] >= cutoff_3)    // jk
-        return;    
-     double cutoff_4  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[4]];
-     double cutoff_04 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[4]];
+        return;
+    double cutoff_4  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[4]];
+    double cutoff_04 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[4]];
     if (dx[4] >= cutoff_4)    // jl
-        return;    
-     double cutoff_5  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[5]];
-     double cutoff_05 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[5]];
+        return;
+    double cutoff_5  = chimes_4b_cutoff[ quadidx ][1][mapped_pair_idx[5]];
+    double cutoff_05 = chimes_4b_cutoff[ quadidx ][0][mapped_pair_idx[5]];
     if (dx[5] >= cutoff_5)    // kl
         return;
 
@@ -7428,10 +7003,10 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
             static_cast<double>(typ_idxs[1]),
             static_cast<double>(typ_idxs[2]),
             static_cast<double>(typ_idxs[3])
-    });}
+        });}
 #endif
     // At this point, all distances are within allowed ranges. We can now proceed to the force/stress/energy calculation
-    
+
 
     int pair_type_1 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[1] ];
     int pair_type_2 = atom_int_pair_map[ typ_idxs[0]*natmtyps + typ_idxs[2] ];
@@ -7439,29 +7014,29 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     int pair_type_4 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[2] ];
     int pair_type_5 = atom_int_pair_map[ typ_idxs[1]*natmtyps + typ_idxs[3] ];
     int pair_type_6 = atom_int_pair_map[ typ_idxs[2]*natmtyps + typ_idxs[3] ];
-    int order       = poly_orders[2];    
+    int order       = poly_orders[2];
 
     // Set up the polynomials
-    
+
     set_cheby_polys(Tn_ij, Tnd_ij, dx[0], morse_var[pair_type_1], cutoff_00, cutoff_0, order);
     set_cheby_polys(Tn_ik, Tnd_ik, dx[1], morse_var[pair_type_2], cutoff_01, cutoff_1, order);
     set_cheby_polys(Tn_il, Tnd_il, dx[2], morse_var[pair_type_3], cutoff_02, cutoff_2, order);
     set_cheby_polys(Tn_jk, Tnd_jk, dx[3], morse_var[pair_type_4], cutoff_03, cutoff_3, order);
     set_cheby_polys(Tn_jl, Tnd_jl, dx[4], morse_var[pair_type_5], cutoff_04, cutoff_4, order);
-    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], cutoff_05, cutoff_5, order);  
-    
-#ifdef USE_DISTANCE_TENSOR  
+    set_cheby_polys(Tn_kl, Tnd_kl, dx[5], morse_var[pair_type_6], cutoff_05, cutoff_5, order);
+
+#ifdef USE_DISTANCE_TENSOR
     // Tensor product of displacement vectors.
     double dr2[CHDIM*CHDIM*npairs*npairs] ;
     init_distance_tensor(dr2, dr, npairs) ;
 #endif
-    
-    
+
+
     // Set up the smoothing functions
-/*
-    for (int i=0; i<npairs; i++)    
-        get_fcut(dx[i], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]], fcut[i], fcutderiv[i]);
-*/
+    /*
+        for (int i=0; i<npairs; i++)
+            get_fcut(dx[i], chimes_4b_cutoff[quadidx][1][mapped_pair_idx[i]], fcut[i], fcutderiv[i]);
+    */
 
     get_fcut(dx[0], cutoff_0, fcut[0], fcutderiv[0]);
     get_fcut(dx[1], cutoff_1, fcut[1], fcutderiv[1]);
@@ -7480,24 +7055,24 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
     fcut_5[3] = fcut[0] * fcut[1] * fcut[2] * fcut[4] * fcut[5] / dx[3] ;
     fcut_5[4] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[5] / dx[4] ;
     fcut_5[5] = fcut[0] * fcut[1] * fcut[2] * fcut[3] * fcut[4] / dx[5] ;
-    
+
     // Start the force/stress/energy calculation
 
     double coeff;
     int powers[npairs] ;
     double force_scalar[npairs] ;
 
-     double fscalar_0 = force_scalar[0];
-     double fscalar_1 = force_scalar[1];
-     double fscalar_2 = force_scalar[2];    
-     double fscalar_3 = force_scalar[3];
-     double fscalar_4 = force_scalar[4];
-     double fscalar_5 = force_scalar[5];      
+    double fscalar_0 = force_scalar[0];
+    double fscalar_1 = force_scalar[1];
+    double fscalar_2 = force_scalar[2];
+    double fscalar_3 = force_scalar[3];
+    double fscalar_4 = force_scalar[4];
+    double fscalar_5 = force_scalar[5];
 
     for(int coeffs=0; coeffs<ncoeffs_4b[quadidx]; coeffs++)
     {
         coeff = chimes_4b_params[quadidx][coeffs];
-        
+
         for (int i=0; i<npairs; i++)
             powers[i] = chimes_4b_powers[quadidx][coeffs][mapped_pair_idx[i]];
 
@@ -7505,14 +7080,14 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         double Tn_jk_jl    =  Tn_jk[ powers[3] ] * Tn_jl[ powers[4] ] ;
         double Tn_kl_5     =  Tn_kl[ powers[5] ] ;
 
-        energy += coeff * fcut_all * Tn_ij_ik_il * Tn_jk_jl * Tn_kl_5 ;      
+        energy += coeff * fcut_all * Tn_ij_ik_il * Tn_jk_jl * Tn_kl_5 ;
 
         deriv[0] = fcut[0] * Tnd_ij[ powers[0] ] + fcutderiv[0] * Tn_ij[ powers[0] ];
         deriv[1] = fcut[1] * Tnd_ik[ powers[1] ] + fcutderiv[1] * Tn_ik[ powers[1] ];
         deriv[2] = fcut[2] * Tnd_il[ powers[2] ] + fcutderiv[2] * Tn_il[ powers[2] ];
         deriv[3] = fcut[3] * Tnd_jk[ powers[3] ] + fcutderiv[3] * Tn_jk[ powers[3] ];
         deriv[4] = fcut[4] * Tnd_jl[ powers[4] ] + fcutderiv[4] * Tn_jl[ powers[4] ];
-        deriv[5] = fcut[5] * Tnd_kl[ powers[5] ] + fcutderiv[5] * Tn_kl[ powers[5] ];        
+        deriv[5] = fcut[5] * Tnd_kl[ powers[5] ] + fcutderiv[5] * Tn_kl[ powers[5] ];
 
         force_scalar[0]  = coeff * deriv[0] * fcut_5[0] * Tn_ik[powers[1]]  * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5 ;
         force_scalar[1]  = coeff * deriv[1] * fcut_5[1] * Tn_ij[powers[0]]  * Tn_il[powers[2]] * Tn_jk_jl * Tn_kl_5 ;
@@ -7520,7 +7095,7 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         force_scalar[3]  = coeff * deriv[3] * fcut_5[3] * Tn_ij_ik_il  * Tn_jl[powers[4]] * Tn_kl_5 ;
         force_scalar[4]  = coeff * deriv[4] * fcut_5[4] * Tn_ij_ik_il  * Tn_jk[powers[3]] * Tn_kl_5 ;
         force_scalar[5]  = coeff * deriv[5] * fcut_5[5] * Tn_ij_ik_il * Tn_jk_jl ;
-	
+
         fscalar_0 = force_scalar[0];
         fscalar_1 = force_scalar[1];
         fscalar_2 = force_scalar[2];
@@ -7529,16 +7104,16 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         fscalar_5 = force_scalar[5];
 
         // Accumulate forces/stresses on/from the ij pair
-        
+
         force[0*CHDIM+0] += fscalar_0 * dr[0*CHDIM+0];
         force[0*CHDIM+1] += fscalar_0 * dr[0*CHDIM+1];
         force[0*CHDIM+2] += fscalar_0 * dr[0*CHDIM+2];
 
         force[1*CHDIM+0] -= fscalar_0 * dr[0*CHDIM+0];
         force[1*CHDIM+1] -= fscalar_0 * dr[0*CHDIM+1];
-        force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];   
+        force[1*CHDIM+2] -= fscalar_0 * dr[0*CHDIM+2];
 
-#ifdef USE_DISTANCE_TENSOR      
+#ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_0  * dr2_4B(dr2,0,0,0,0); // xx tensor component
         stress[1] -= fscalar_0  * dr2_4B(dr2,0,0,0,1); // xy tensor component
         stress[2] -= fscalar_0  * dr2_4B(dr2,0,0,0,2); // xz tensor component
@@ -7552,8 +7127,8 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         stress[3] -= fscalar_0  * dr[0*CHDIM+1] * dr[0*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_0  * dr[0*CHDIM+1] * dr[0*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_0  * dr[0*CHDIM+2] * dr[0*CHDIM+2]; // zz tensor component
-#endif      
-        
+#endif
+
         // Accumulate forces/stresses on/from the ik pair
 
         force[0*CHDIM+0] += fscalar_1 * dr[1*CHDIM+0];
@@ -7561,23 +7136,23 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         force[0*CHDIM+2] += fscalar_1 * dr[1*CHDIM+2];
         force[2*CHDIM+0] -= fscalar_1 * dr[1*CHDIM+0];
         force[2*CHDIM+1] -= fscalar_1 * dr[1*CHDIM+1];
-        force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];   
+        force[2*CHDIM+2] -= fscalar_1 * dr[1*CHDIM+2];
 
-#if USE_DISTANCE_TENSOR     
+#if USE_DISTANCE_TENSOR
         stress[0] -= fscalar_1  * dr2_4B(dr2,1,0,1,0); // xx tensor component
         stress[1] -= fscalar_1  * dr2_4B(dr2,1,0,1,1); // xy tensor component
         stress[2] -= fscalar_1  * dr2_4B(dr2,1,0,1,2); // xz tensor component
         stress[3] -= fscalar_1  * dr2_4B(dr2,1,1,1,1); // yy tensor component
         stress[4] -= fscalar_1  * dr2_4B(dr2,1,1,1,2); // yz tensor component
         stress[5] -= fscalar_1  * dr2_4B(dr2,1,2,1,2); // zz tensor component
-#else        
+#else
         stress[0] -= fscalar_1  * dr[1*CHDIM+0] * dr[1*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_1  * dr[1*CHDIM+0] * dr[1*CHDIM+1]; // xy tensor component
         stress[2] -= fscalar_1  * dr[1*CHDIM+0] * dr[1*CHDIM+2]; // xz tensor component
         stress[3] -= fscalar_1  * dr[1*CHDIM+1] * dr[1*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_1  * dr[1*CHDIM+1] * dr[1*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_1  * dr[1*CHDIM+2] * dr[1*CHDIM+2]; // zz tensor component
-#endif      
+#endif
         // Accumulate forces/stresses on/from the il pair
 
         force[0*CHDIM+0] += fscalar_2 * dr[2*CHDIM+0];
@@ -7585,35 +7160,35 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         force[0*CHDIM+2] += fscalar_2 * dr[2*CHDIM+2];
         force[3*CHDIM+0] -= fscalar_2 * dr[2*CHDIM+0];
         force[3*CHDIM+1] -= fscalar_2 * dr[2*CHDIM+1];
-        force[3*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];   
+        force[3*CHDIM+2] -= fscalar_2 * dr[2*CHDIM+2];
 
-#ifdef USE_DISTANCE_TENSOR        
+#ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_2  * dr2_4B(dr2,2,0,2,0); // xx tensor component
         stress[1] -= fscalar_2  * dr2_4B(dr2,2,0,2,1); // xy tensor component
         stress[2] -= fscalar_2  * dr2_4B(dr2,2,0,2,2); // xz tensor component
         stress[3] -= fscalar_2  * dr2_4B(dr2,2,1,2,1); // yy tensor component
         stress[4] -= fscalar_2  * dr2_4B(dr2,2,1,2,2); // yz tensor component
-        stress[5] -= fscalar_2  * dr2_4B(dr2,2,2,2,2); // zz tensor component           
-#else       
+        stress[5] -= fscalar_2  * dr2_4B(dr2,2,2,2,2); // zz tensor component
+#else
         stress[0] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+1]; // xy tensor component
         stress[2] -= fscalar_2  * dr[2*CHDIM+0] * dr[2*CHDIM+2]; // xz tensor component
         stress[3] -= fscalar_2  * dr[2*CHDIM+1] * dr[2*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_2  * dr[2*CHDIM+1] * dr[2*CHDIM+2]; // yz tensor component
-        stress[5] -= fscalar_2  * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component           
+        stress[5] -= fscalar_2  * dr[2*CHDIM+2] * dr[2*CHDIM+2]; // zz tensor component
 #endif
 
         // Accumulate forces/stresses on/from the jk pair
-        
+
         force[1*CHDIM+0] += fscalar_3 * dr[3*CHDIM+0];
         force[1*CHDIM+1] += fscalar_3 * dr[3*CHDIM+1];
         force[1*CHDIM+2] += fscalar_3 * dr[3*CHDIM+2];
 
         force[2*CHDIM+0] -= fscalar_3 * dr[3*CHDIM+0];
         force[2*CHDIM+1] -= fscalar_3 * dr[3*CHDIM+1];
-        force[2*CHDIM+2] -= fscalar_3 * dr[3*CHDIM+2];   
+        force[2*CHDIM+2] -= fscalar_3 * dr[3*CHDIM+2];
 
-#ifdef USE_DISTANCE_TENSOR      
+#ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_3  * dr2_4B(dr2,3,0,3,0); // xx tensor component
         stress[1] -= fscalar_3  * dr2_4B(dr2,3,0,3,1); // xy tensor component
         stress[2] -= fscalar_3  * dr2_4B(dr2,3,0,3,2); // xz tensor component
@@ -7628,39 +7203,39 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         stress[4] -= fscalar_3  * dr[3*CHDIM+1] * dr[3*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_3  * dr[3*CHDIM+2] * dr[3*CHDIM+2]; // zz tensor component
 #endif
-        
+
         // Accumulate forces/stresses on/from the jl pair
-        
+
         force[1*CHDIM+0] += fscalar_4 * dr[4*CHDIM+0];
         force[1*CHDIM+1] += fscalar_4 * dr[4*CHDIM+1];
         force[1*CHDIM+2] += fscalar_4 * dr[4*CHDIM+2];
 
         force[3*CHDIM+0] -= fscalar_4 * dr[4*CHDIM+0];
         force[3*CHDIM+1] -= fscalar_4 * dr[4*CHDIM+1];
-        force[3*CHDIM+2] -= fscalar_4 * dr[4*CHDIM+2];     
+        force[3*CHDIM+2] -= fscalar_4 * dr[4*CHDIM+2];
 
-#ifdef USE_DISTANCE_TENSOR      
+#ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_4  * dr2_4B(dr2,4,0,4,0); // xx tensor component
         stress[1] -= fscalar_4  * dr2_4B(dr2,4,0,4,1); // xy tensor component
         stress[2] -= fscalar_4  * dr2_4B(dr2,4,0,4,2); // xz tensor component
         stress[3] -= fscalar_4  * dr2_4B(dr2,4,1,4,1); // yy tensor component
         stress[4] -= fscalar_4  * dr2_4B(dr2,4,1,4,2); // yz tensor component
         stress[5] -= fscalar_4  * dr2_4B(dr2,4,2,4,2); // zz tensor component
-#else       
+#else
         stress[0] -= fscalar_4  * dr[4*CHDIM+0] * dr[4*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_4  * dr[4*CHDIM+0] * dr[4*CHDIM+1]; // xy tensor component
         stress[2] -= fscalar_4  * dr[4*CHDIM+0] * dr[4*CHDIM+2]; // xz tensor component
         stress[3] -= fscalar_4  * dr[4*CHDIM+1] * dr[4*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_4  * dr[4*CHDIM+1] * dr[4*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_4  * dr[4*CHDIM+2] * dr[4*CHDIM+2]; // zz tensor component
-#endif      
+#endif
         // Accumulate forces/stresses on/from the kl pair
         force[2*CHDIM+0] += fscalar_5 * dr[5*CHDIM+0];
         force[2*CHDIM+1] += fscalar_5 * dr[5*CHDIM+1];
         force[2*CHDIM+2] += fscalar_5 * dr[5*CHDIM+2];
         force[3*CHDIM+0] -= fscalar_5 * dr[5*CHDIM+0];
         force[3*CHDIM+1] -= fscalar_5 * dr[5*CHDIM+1];
-        force[3*CHDIM+2] -= fscalar_5 * dr[5*CHDIM+2];     
+        force[3*CHDIM+2] -= fscalar_5 * dr[5*CHDIM+2];
 
 #ifdef USE_DISTANCE_TENSOR
         stress[0] -= fscalar_5  * dr2_4B(dr2,5,0,5,0); // xx tensor component
@@ -7669,22 +7244,22 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
         stress[3] -= fscalar_5  * dr2_4B(dr2,5,1,5,1); // yy tensor component
         stress[4] -= fscalar_5  * dr2_4B(dr2,5,1,5,2); // yz tensor component
         stress[5] -= fscalar_5  * dr2_4B(dr2,5,2,5,2); // zz tensor component
-#else       
+#else
         stress[0] -= fscalar_5  * dr[5*CHDIM+0] * dr[5*CHDIM+0]; // xx tensor component
         stress[1] -= fscalar_5  * dr[5*CHDIM+0] * dr[5*CHDIM+1]; // xy tensor component
         stress[2] -= fscalar_5  * dr[5*CHDIM+0] * dr[5*CHDIM+2]; // xz tensor component
         stress[3] -= fscalar_5  * dr[5*CHDIM+1] * dr[5*CHDIM+1]; // yy tensor component
         stress[4] -= fscalar_5  * dr[5*CHDIM+1] * dr[5*CHDIM+2]; // yz tensor component
         stress[5] -= fscalar_5  * dr[5*CHDIM+2] * dr[5*CHDIM+2]; // zz tensor component
-#endif      
+#endif
     }
-    
-	force_scalar_in[0] = force_scalar[0];
-	force_scalar_in[1] = force_scalar[1];
-	force_scalar_in[2] = force_scalar[2];
-	force_scalar_in[3] = force_scalar[3];
-	force_scalar_in[4] = force_scalar[4];
-	force_scalar_in[5] = force_scalar[5];
+
+    force_scalar_in[0] = force_scalar[0];
+    force_scalar_in[1] = force_scalar[1];
+    force_scalar_in[2] = force_scalar[2];
+    force_scalar_in[3] = force_scalar[3];
+    force_scalar_in[4] = force_scalar[4];
+    force_scalar_in[5] = force_scalar[5];
 
     return;
 }
@@ -7692,23 +7267,23 @@ void chimesFF::compute_4B(const vector<double> & dx, const vector<double> & dr, 
 void chimesFF::get_cutoff_2B(vector<vector<double> >  & cutoff_2b)
 {
     int dim = chimes_2b_cutoff.size();
-    
+
     cutoff_2b.resize(dim);
-    
+
     for (int i=0; i<dim; i++)
     {
         cutoff_2b[i].resize(0);
-        
+
         for (int j=0; j<chimes_2b_cutoff[i].size(); j++)
-        
+
             cutoff_2b[i].push_back(chimes_2b_cutoff[i][j]);
     }
 }
 
 double chimesFF::max_cutoff(int ntypes, vector<vector<vector<double> > > & cutoff_list)
 {
-    double max = cutoff_list[0][1][0]; 
-    
+    double max = cutoff_list[0][1][0];
+
     for (int i=0; i<ntypes; i++)
         for (int j=0; j<cutoff_list[i][1].size(); j++)
             if (cutoff_list[i][1][j] > max)
@@ -7720,50 +7295,50 @@ double chimesFF::max_cutoff(int ntypes, vector<vector<vector<double> > > & cutof
 
 double chimesFF::max_cutoff_2B(bool silent)
 {
-    double max = chimes_2b_cutoff[0][1]; 
-    
+    double max = chimes_2b_cutoff[0][1];
+
     for (int i=0; i<chimes_2b_cutoff.size(); i++)
         if (chimes_2b_cutoff[i][1] > max)
             max = chimes_2b_cutoff[i][1];
-    
-    if ((rank == 0)&&(!silent))        
+
+    if ((rank == 0)&&(!silent))
         cout << "chimesFF: " << "\t" << "Setting 2-body max cutoff to: " << max << endl;
-    
-    return max;    
+
+    return max;
 }
 
 double chimesFF::max_cutoff_3B(bool silent)
 {
-    
+
     if (poly_orders[1] == 0)
         return 0.0;
-    
+
     double max = max_cutoff(chimes_3b_cutoff.size(), chimes_3b_cutoff);
-    
-    if ((rank == 0)&&(!silent))    
+
+    if ((rank == 0)&&(!silent))
         cout << "chimesFF: " << "\t" << "Setting 3-body max cutoff to: " << max << endl;
-    
+
     return max;
-    
+
 }
 
 double chimesFF::max_cutoff_4B(bool silent)
 {
     if (poly_orders[2] == 0)
         return 0.0;
-    
+
     double max =  max_cutoff(chimes_4b_cutoff.size(), chimes_4b_cutoff);
-        
-    if ((rank == 0)&&(!silent))    
+
+    if ((rank == 0)&&(!silent))
         cout << "chimesFF: " << "\t" << "Setting 4-body max cutoff to: " << max << endl;
-    
+
     return max;
 }
 
 void chimesFF::set_atomtypes(vector<string> & type_list)
 {
     type_list.resize(natmtyps);
-    
+
     for(int i=0;i<natmtyps;i++)
         type_list[i] = atmtyps[i];
 }
@@ -7785,10 +7360,10 @@ void chimesFF::build_pair_int_quad_map()
     vector<int> typ_idxs(natoms) ;
 
     if ( atom_int_quad_map.size() == 0 ) return ; // No quads !
-    
+
     pair_int_quad_map.resize(natmtyps*natmtyps*natmtyps*natmtyps) ;
 
-    
+
     for ( int i = 0 ; i < natmtyps ; i++ )
     {
         typ_idxs[0] = i ;
@@ -7818,7 +7393,7 @@ void chimesFF::build_pair_int_quad_map()
                         exit(1) ;
                     }
 
-                    // Note: The entire vector<> is copied and stored.                  
+                    // Note: The entire vector<> is copied and stored.
                     pair_int_quad_map[idx] = pair_map ;
                 }
             }
@@ -7828,14 +7403,14 @@ void chimesFF::build_pair_int_quad_map()
     {
         if ( pair_int_quad_map[i].size() == 0 )
         {
-		if (atom_int_quad_map[i] >= 0)
-			if(rank==0){
-            			cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl ;}
-		else
-			{if(rank==0)
-				cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl ;}
+            if (atom_int_quad_map[i] >= 0)
+                if(rank==0){
+                cout << "Error: Did not initialize pair_int_quad_map for entry " << i << endl ;}
+            else
+            {if(rank==0)
+                cout << "Warning: Did not initialize pair_int_quad_map for excluded entry " << i << endl ;}
         }
-    }   
+    }
 }
 
 void chimesFF::build_pair_int_trip_map()
@@ -7849,9 +7424,9 @@ void chimesFF::build_pair_int_trip_map()
     vector<int> typ_idxs(natoms) ;
 
     if ( atom_int_trip_map.size() == 0 ) return ; // No trips !
-    
+
     pair_int_trip_map.resize(natmtyps*natmtyps*natmtyps) ;
-    
+
     for ( int i = 0 ; i < natmtyps ; i++ )
     {
         typ_idxs[0] = i ;
@@ -7862,13 +7437,13 @@ void chimesFF::build_pair_int_trip_map()
             {
                 typ_idxs[2] = k ;
                 int tripidx = atom_int_trip_map[i*natmtyps*natmtyps + j*natmtyps + k];
-		
-		// Skip excluded interactions
-		if (tripidx < 0)
-			continue;
+
+                // Skip excluded interactions
+                if (tripidx < 0)
+                    continue;
 
                 build_atom_and_pair_mappers(natoms, npairs, typ_idxs, trip_params_pair_typs[tripidx], pair_map);
-                    
+
                 // Save for re-use in force evaluators.
                 if ( tripidx >= natmtyps * natmtyps * natmtyps * natmtyps )
                 {
@@ -7886,14 +7461,207 @@ void chimesFF::build_pair_int_trip_map()
     {
         if ( pair_int_trip_map[i].size() == 0 )
         {
-		if (atom_int_trip_map[i] >= 0)
-			{if(rank==0)
-            			cout << "Error: Did not initialize pair_int_trip_map for entry " << i << endl ;
+            if (atom_int_trip_map[i] >= 0)
+            {if(rank==0)
+                        cout << "Error: Did not initialize pair_int_trip_map for entry " << i << endl ;
             }else
-			{if(rank==0)
-				cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl ;}
+            {if(rank==0)
+                cout << "Warning: Did not initialize pair_int_trip_map for excluded entry " << i << endl ;}
         }
     }
-    
+
 }
 
+
+#ifdef TABULATION
+// =============================================================================
+// CP 1D 3-BODY TABLES
+// =============================================================================
+
+// Forces and stress of one triplet from the scalars dE/dr_p / r_p
+// (runtime pair order: 0 = ij, 1 = ik, 2 = jk).
+static inline void chimes_accumulate_3b_force_stress_from_scalars(const std::vector<double> & dr, const double *fs, std::vector<double> & force, std::vector<double> & stress)
+{
+    static const int ia[3] = {0, 0, 1};
+    static const int ib[3] = {1, 2, 2};
+    for (int p = 0; p < 3; p++)
+    {
+        const double *rp = &dr[p*CHDIM];
+        for (int a = 0; a < CHDIM; a++)
+        {
+            force[ia[p]*CHDIM + a] += fs[p] * rp[a];
+            force[ib[p]*CHDIM + a] -= fs[p] * rp[a];
+        }
+        stress[0] -= fs[p] * rp[0] * rp[0];
+        stress[1] -= fs[p] * rp[0] * rp[1];
+        stress[2] -= fs[p] * rp[0] * rp[2];
+        stress[3] -= fs[p] * rp[1] * rp[1];
+        stress[4] -= fs[p] * rp[1] * rp[2];
+        stress[5] -= fs[p] * rp[2] * rp[2];
+    }
+}
+
+void chimesFF::read_3B_cp_file(std::string table_file, int tripidx)
+{
+    ifstream in(table_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 3B CP table file: " << table_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_3b_cp.size() <= tripidx)
+        tab_3b_cp.resize(tripidx + 1);
+
+    CP3BTable & T = tab_3b_cp[tripidx];
+    T = CP3BTable();
+
+    string line;
+    vector<string> items;
+    bool saw_header = false;
+    int nslots_read = 0;
+
+    while (getline(in, line))
+    {
+        const int n = split_line(line, items);
+        if (n == 0)
+            continue;
+
+        if (items[0] == "CHIMES_3B_CP_TABLE")
+            saw_header = true;
+        else if (items[0] == "END_CHIMES_3B_CP_TABLE")
+            break;
+        else if (items[0] == "rank")
+            T.rank = stoi(items[1]);
+        else if (items[0] == "shared")
+            T.shared = (stoi(items[1]) != 0);
+        else if (items[0] == "canon_to_param" && n == 4)
+            for (int c = 0; c < 3; c++)
+                T.canon_to_param[c] = stoi(items[1 + c]);
+        else if (items[0] == "slot")
+        {
+            // slot <c> <ngrid> <r0> <dr>, then ngrid rows of: val[0..R-1] der[0..R-1]
+            if (T.rank <= 0 || n != 5)
+            {
+                cout << "ERROR: malformed slot header (or rank missing) in " << table_file << endl;
+                exit(0);
+            }
+            const int c = stoi(items[1]);
+            CP1DTable & tab = T.slot[c];
+            tab.rank  = T.rank;
+            tab.ngrid = stoi(items[2]);
+            tab.r0    = stod(items[3]);
+            tab.dr    = stod(items[4]);
+            tab.invdr = 1.0 / tab.dr;
+            tab.vd.resize((size_t)tab.ngrid * 2 * T.rank);
+
+            for (int row = 0; row < tab.ngrid; row++)
+            {
+                if (!getline(in, line) || split_line(line, items) != 2*T.rank)
+                {
+                    cout << "ERROR: bad 3B CP table row " << row << " of slot " << c << " in " << table_file << endl;
+                    exit(0);
+                }
+                for (int q = 0; q < 2*T.rank; q++)
+                    tab.vd[(size_t)row * 2 * T.rank + q] = static_cast<chimes_tab_real>(stod(items[q]));
+            }
+            nslots_read++;
+        }
+    }
+
+    if (!saw_header || T.rank <= 0 || nslots_read != (T.shared ? 1 : 3))
+    {
+        cout << "ERROR: incomplete 3B CP table file " << table_file << endl;
+        exit(0);
+    }
+
+    if (T.shared)
+        T.slot[1] = T.slot[2] = T.slot[0];   // cheap: tables are small; keeps the hot path branch-free
+
+    if (rank == 0)
+    {
+        size_t bytes = 0;
+        for (int c = 0; c < (T.shared ? 1 : 3); c++)
+            bytes += T.slot[c].vd.size() * sizeof(chimes_tab_real);
+        cout << "chimesFF: Read 3B CP table for triplet type " << tripidx << ": rank " << T.rank
+             << (T.shared ? " (shared symmetric slot table)" : "") << ", "
+             << bytes / 1024.0 << " KiB" << endl;
+    }
+}
+
+void chimesFF::compute_3B_cp_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp, vector<double> & force_scalar_in)
+{
+    const int type_idx = typ_idxs[0]*natmtyps*natmtyps + typ_idxs[1]*natmtyps + typ_idxs[2];
+    const int tripidx  = atom_int_trip_map[type_idx];
+
+    if (tripidx < 0)
+        return;
+
+    const vector<int> & mp = pair_int_trip_map[type_idx];
+
+    if (dx[0] >= chimes_3b_cutoff[tripidx][1][mp[0]] || dx[1] >= chimes_3b_cutoff[tripidx][1][mp[1]] || dx[2] >= chimes_3b_cutoff[tripidx][1][mp[2]])
+        return;
+
+    if ((int)tab_3b_cp.size() <= tripidx || tab_3b_cp[tripidx].rank <= 0)
+    {
+        if (ncoeffs_3b[tripidx] == 0)      // fitted with no 3B terms: nothing to add
+            return;
+
+        cout << "ERROR: no 3B CP table for triplet type " << tripidx
+             << " (all triplet types must be tabulated when 3B CP TABLES is used)" << endl;
+        exit(0);
+    }
+
+    const CP3BTable & T = tab_3b_cp[tripidx];
+    const int R = T.rank;
+
+    int param_to_runtime[3];
+    for (int r = 0; r < 3; r++)
+        param_to_runtime[mp[r]] = r;
+
+    const int MAXR = 1024;
+    if (R > MAXR)
+    {
+        cout << "ERROR: 3B CP rank " << R << " exceeds " << MAXR << endl;
+        exit(0);
+    }
+
+    double Xb[3][MAXR], Db[3][MAXR];
+    int c2r[3];
+
+    for (int c = 0; c < 3; c++)
+    {
+        c2r[c] = param_to_runtime[T.canon_to_param[c]];
+        interpolateCP1DLinear(T.slot[c], dx[c2r[c]], Xb[c], Db[c], chimes_3b_cutoff[tripidx][1][T.canon_to_param[c]]);
+    }
+
+    double e = 0.0, g0 = 0.0, g1 = 0.0, g2 = 0.0;
+    {
+        const double * __restrict x0 = Xb[0], * __restrict x1 = Xb[1], * __restrict x2 = Xb[2];
+        const double * __restrict d0 = Db[0], * __restrict d1 = Db[1], * __restrict d2 = Db[2];
+        for (int q = 0; q < R; q++)
+        {
+            const double x12 = x1[q] * x2[q];
+            const double x02 = x0[q] * x2[q];
+            e  += x0[q] * x12;
+            g0 += d0[q] * x12;
+            g1 += d1[q] * x02;
+            g2 += x0[q] * x1[q] * d2[q];
+        }
+    }
+
+    energy += e;
+
+    double dE[3];
+    dE[c2r[0]] = g0;
+    dE[c2r[1]] = g1;
+    dE[c2r[2]] = g2;
+
+    double fs[3] = {dE[0]/dx[0], dE[1]/dx[1], dE[2]/dx[2]};
+    chimes_accumulate_3b_force_stress_from_scalars(dr, fs, force, stress);
+
+    force_scalar_in[0] = fs[0];
+    force_scalar_in[1] = fs[1];
+    force_scalar_in[2] = fs[2];
+}
+#endif

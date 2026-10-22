@@ -70,6 +70,13 @@ namespace LAMMPS_NS
 			
 			std::vector<std::vector<int> > neighborlist_3mers;	// custom neighbor list; neighborlist_Xmers[cluster idx][atom in cluster idx]
 			std::vector<std::vector<int> > neighborlist_4mers;
+
+			// Short per-atom neighbor lists (built with the 3-mers, i.e. only on
+			// LAMMPS neighbor-list rebuilds) holding the neighbors of local atom i
+			// within maxcut_4b + skin.  The 4B fourth-atom search loops over this
+			// list instead of i's full 2B list (8 A vs 4 A for HN3: ~8x fewer
+			// candidate atoms per triplet).
+			std::vector<std::vector<int> > neighlist_short4;
             
             // Prepare files necessary for ChIMES fitting 
             
