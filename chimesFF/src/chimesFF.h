@@ -325,7 +325,7 @@ private:
 
     int get_proper_pair(string ty1, string ty2);
         
-    double max_cutoff(int ntypes, vector<vector<vector<double> > > & cutoff_list);
+    double max_cutoff(int ntypes, vector<vector<vector<double> > > & cutoff_list, const vector<int> & idx_map);
         
     // Tools for reading the input file
         
@@ -628,27 +628,3 @@ inline void chimesFF::set_cheby_polys(vector<double> &Tn, vector<double> &Tnd, d
 }
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

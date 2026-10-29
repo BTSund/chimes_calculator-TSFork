@@ -2887,14 +2887,28 @@ void chimesFF::get_cutoff_2B(vector<vector<double> >  & cutoff_2b)
     }
 }
 
-double chimesFF::max_cutoff(int ntypes, vector<vector<vector<double> > > & cutoff_list)
+double chimesFF::max_cutoff(int ntypes, vector<vector<vector<double> > > & cutoff_list, const vector<int> & idx_map)
 {
-    double max = cutoff_list[0][1][0]; 
+    // Only consider types that appear in the TRIPMAPS/QUADMAPS idx_map. Excluded types map to -1 and
+    // keep their default (2-body) cutoffs, which would otherwise inflate the many-body neighbor list.
+
+    vector<bool> active(ntypes, false);
+
+    for (int i=0; i<idx_map.size(); i++)
+        if ((idx_map[i] >= 0) && (idx_map[i] < ntypes))
+            active[idx_map[i]] = true;
+
+    double max = 0.0;
     
     for (int i=0; i<ntypes; i++)
+    {
+        if (!active[i])
+            continue;
+
         for (int j=0; j<cutoff_list[i][1].size(); j++)
             if (cutoff_list[i][1][j] > max)
                 max = cutoff_list[i][1][j];
+    }
 
     return max;
 
@@ -2920,7 +2934,7 @@ double chimesFF::max_cutoff_3B(bool silent)
     if (poly_orders[1] == 0)
         return 0.0;
     
-    double max = max_cutoff(chimes_3b_cutoff.size(), chimes_3b_cutoff);
+    double max = max_cutoff(chimes_3b_cutoff.size(), chimes_3b_cutoff, atom_idx_trip_map);
     
     if ((rank == 0)&&(!silent))    
         cout << "chimesFF: " << "\t" << "Setting 3-body max cutoff to: " << max << endl;
@@ -2934,7 +2948,7 @@ double chimesFF::max_cutoff_4B(bool silent)
     if (poly_orders[2] == 0)
         return 0.0;
     
-    double max =  max_cutoff(chimes_4b_cutoff.size(), chimes_4b_cutoff);
+    double max =  max_cutoff(chimes_4b_cutoff.size(), chimes_4b_cutoff, atom_idx_quad_map);
         
     if ((rank == 0)&&(!silent))    
         cout << "chimesFF: " << "\t" << "Setting 4-body max cutoff to: " << max << endl;
@@ -3078,4 +3092,3 @@ void chimesFF::build_pair_int_trip_map()
     }
     
 }
-
