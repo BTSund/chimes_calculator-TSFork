@@ -603,6 +603,15 @@ public:
         std::vector<chimes_tab_real> vd;
     };
 
+    // 2B tables (see eval_2B): cubic Hermite in r of the 2B energy, value and dE/dr at uniform
+    // nodes (a rank-1 CP1DTable).  Written by util/tensor_tools/chimes_cpd.py ("2B TABLES:"), or
+    // converted at read time from TABULATED 2B scan files on a uniform grid.
+    bool tabulate_2B_hermite = false;
+    std::vector<CP1DTable> tab_2b_h;         // [pair type]; ngrid 0: no table for the pair
+    std::vector<char> tab_2b_h_penalty;      // 1: the table includes the penalty (converted scan files)
+    void read_2B_table_file(std::string table_file, int pairidx);
+    void convert_2B_scans();
+
     // Per atom-type-tuple cache of canonical slot -> runtime slot maps
     // (avoids rebuilding the permutation for every quadruplet).
     //   [tuple idx][c] = runtime slot, or -1 if not built / not available
@@ -662,6 +671,106 @@ public:
     void read_3B_cp_file(std::string table_file, int tripidx);
 
     void compute_3B_cp_tab(const vector<double> & dx, const vector<double> & dr, const vector<int> & typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes3BTmp &tmp, vector<double> & force_scalar_in);
+
+    // Cubic-Hermite CP 1D table lookup for rank terms q0 <= q < q1:
+    //   val[q - q0] = X_q(r), der[q - q0] = dX_q/dr
+    // (interpolateCP1DLinear is the q0 = 0, q1 = rank case)
+    void cp1d_eval_range(const CP1DTable &tab, double rquery, double rc, int q0, int q1, double *val, double *der);
+#endif
+
+    // 2B for callers that run their own pair loop (pair_style chimesFF): pair type of two atom
+    // types, its outer cutoff, and E and dE/dr at distance r (penalty included, 0 at and beyond
+    // the cutoff; 2B tables when present, otherwise the Chebyshev sum)
+    int    pair_index(int ti, int tj) const { return atom_int_pair_map[ti*natmtyps + tj]; }
+    double pair_outer_cutoff(int pidx) const { return chimes_2b_cutoff[pidx][1]; }
+    void   eval_2B(int pidx, double r, double &E, double &dEdr, chimes2BTmp &tmp);
+
+#ifdef TABULATION
+    // -------------------------------------------------------------------------
+    // Pair-level access to the CP models, for subgraph reuse in pair_chimes.cpp
+    // (on with -DTABULATION; pair cache with -DCHIMES_PAIR_CACHE).
+    //
+    // Each canonical slot of a 3B or 4B cluster type is one CP "table" (4B CP
+    // DIRECT factors count as tables too). Its rank-term functions X_q(r),
+    // q = 0..R-1, depend only on the pair distance, so a pair's values can be
+    // computed once and reused by every triplet and quadruplet containing it.
+    //
+    // Table ids:  4B  quadidx*6 + c
+    //             3B  cp_num_tables_4B() + tripidx*3 + c   (c = 0 for all three
+    //                 slots of a shared symmetric 3B table)
+    //
+    // Runtime pair slots:  3B  0 = ij, 1 = ik, 2 = jk
+    //                      4B  0 = ij, 1 = ik, 2 = il, 3 = jk, 4 = jl, 5 = kl
+    // -------------------------------------------------------------------------
+    struct CPClusterInfo
+    {
+        int type_index = -1;    // tripidx / quadidx; -1 = excluded cluster type
+        int rank = 0;           // CP rank; 0 = the type has no terms (contributes nothing)
+        int c2r[6];             // canonical slot -> runtime pair slot
+        int table[6];           // CP table id of each canonical slot
+        int pair_type[6];       // 2B pair type of each canonical slot (for the Morse lambda)
+        double rc_runtime[6];   // outer cutoff of each runtime pair slot
+        double rin[6];          // inner and outer cutoff of each canonical slot (exact 3B)
+        double rout[6];
+    };
+
+    bool cluster_type_inert(int nbody, int typeidx);   // never contributes: all coefficients zero or a zero-range slot
+
+    // Return false when the cluster type has terms but no CP model to evaluate them
+    bool cp3_cluster_info(const int *typ_idxs, CPClusterInfo &info);
+    bool cp4_cluster_info(const int *typ_idxs, CPClusterInfo &info);
+
+    bool cp4_uses_direct(int quadidx);
+    bool cp4_uses_tables(int quadidx);
+
+    int cp_num_tables_4B();
+    int cp_num_tables();
+    int cp_table_rank(int table);
+    double cp_table_cutoff(int table);
+
+    // X[q - q0], D[q - q0] = X_q(r), dX_q/dr for q0 <= q < q1 (pair_type: 2B pair type of the pair)
+    void cp_table_eval(int table, int pair_type, double r, int q0, int q1, double *X, double *D);
+
+    std::vector<double> cp_eval_Tn, cp_eval_Tnd;   // scratch for CP-direct factor evaluation
+
+    // Exact (polynomial) 3B through the pair cache.  Canonical slot = parameter-file
+    // pair slot, rank = N = exact_n3 (largest 3B power + 1).  A pair's functions are
+    //     G_n(r) = fcut(r) T_n(s(r)),   n = 0..N-1,
+    // and the coefficients form a dense tensor T[(n0*N + n1)*N + n2] (slot order), so
+    //     E_3B = sum_n0,n1,n2 T[n0][n1][n2] G_slot0[n0] G_slot1[n1] G_slot2[n2]
+    // which is the same sum compute_3B evaluates coefficient by coefficient.
+    bool exact3_cluster_info(const int *typ_idxs, CPClusterInfo &info);
+    void exact3_pair_eval(int pair_type, double rin, double rout, double r, double *G, double *dG);
+    void exact3_dense_tensor(int tripidx, std::vector<double> &T);
+
+    // G_n(r), dG_n/dr for n = 0..n-1 (any body order: same polynomials and cutoff function)
+    void exact_pair_eval(int pair_type, double rin, double rout, int n, double r, double *G, double *dG);
+
+    // Basis size per pair slot of the many-body polynomials: largest power in the
+    // parameter file + 1 (powers run to order - 1, so this is one less than order + 1)
+    int exact_n3 = 0;
+    int exact_n4 = 0;
+
+    // Exact 4B through pair reuse, from the parameter file's coefficients or from a
+    // Morse-space SVD file.  Canonical slot = parameter-file pair slot, rank = exact_n4,
+    // dense tensor T[((((n0*N + n1)*N + n2)*N + n3)*N + n4)*N + n5] in slot order.
+    // exact4_cluster_info returns false for a type evaluated from a 4B grid table
+    // (r-space SVD or coefficient tables): such types stay in the per-cluster loop.
+    bool exact4_cluster_info(const int *typ_idxs, CPClusterInfo &info);
+    void exact4_dense_tensor(int quadidx, std::vector<double> &T);
+    bool legacy_4b_table(int quadidx);
+
+    // Morse-space SVD of the 4B coefficient tensor ("4B SVD MORSE:" block, files written
+    // by util/tensor_tools/chimes_tabulate.py --4b svd33 / svd42).  In the Morse variable
+    // the SVD factor functions are polynomials, so the factors are stored as coefficients
+    // of the same Chebyshev basis and are exact; the tensor they represent is
+    //     T = sum_k L[left index][k] R[right index][k]
+    // and is evaluated through pair reuse like the exact 4B.
+    bool tabulate_4B_svd_morse = false;
+    std::vector<std::vector<double> > svd_morse_tensor;   // [quadidx]: L R^T in slot order, dims below; empty: none
+    std::vector<std::array<int,6> > svd_morse_dims;       // [quadidx]: basis size per slot in the file
+    std::vector<int> svd_morse_rank;                      // [quadidx]: number of SVD terms
+    void read_4B_svd_morse(std::string file, int quadidx);
 #endif
 
 private:

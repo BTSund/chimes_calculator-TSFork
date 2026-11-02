@@ -3167,9 +3167,33 @@ void chimesFF::read_parameters(string paramfile)
     }
 
 #ifdef TABULATION
+    // TABULATED 2B scan files on a uniform grid become Hermite tables (values and dE/dr at the
+    // points), replacing the per-call binary search and local splines
+    convert_2B_scans();
+
+    // Basis size per slot of the 3B and 4B polynomials (pair reuse): largest power + 1
+    exact_n3 = 0;
+    exact_n4 = 0;
+
+    for (size_t t = 0; t < chimes_3b_powers.size(); t++)
+        for (size_t c = 0; c < chimes_3b_powers[t].size(); c++)
+            for (size_t m = 0; m < chimes_3b_powers[t][c].size(); m++)
+                exact_n3 = max(exact_n3, chimes_3b_powers[t][c][m] + 1);
+
+    for (size_t t = 0; t < chimes_4b_powers.size(); t++)
+        for (size_t c = 0; c < chimes_4b_powers[t].size(); c++)
+            for (size_t m = 0; m < chimes_4b_powers[t][c].size(); m++)
+                exact_n4 = max(exact_n4, chimes_4b_powers[t][c][m] + 1);
+
     // Optional CP 1D 3B tables (see chimesFF.h):
     //     3B CP TABLES: <n>
     //     <tripidx> <table file>          (one line per triplet type)
+    // Optional 2B tables (see eval_2B):
+    //     2B TABLES: <n>
+    //     <pairidx> <table file>          (one line per pair type)
+    // Optional Morse-space SVD of 4B types (see read_4B_svd_morse):
+    //     4B SVD MORSE: <n>
+    //     <quadidx> <file>                (one line per quadruplet type)
     param_file.clear();
     param_file.seekg(0);
     while (true)
@@ -3200,7 +3224,54 @@ void chimesFF::read_parameters(string paramfile)
             }
             continue;
         }
+
+        if (split_line(line, tmp_str_items) >= 3 && tmp_str_items[0] == "2B" && tmp_str_items[1] == "TABLES:")
+        {
+            const int ntab = stoi(tmp_str_items[2]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << ntab << " 2B tables" << endl;
+
+            for (int t = 0; t < ntab; t++)
+            {
+                line = get_next_line(param_file);
+                if (split_line(line, tmp_str_items) != 2)
+                {
+                    cout << "ERROR: Expected 2B table line format: <pairidx> <table file>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+                read_2B_table_file(join_path_chimes(param_file_path, tmp_str_items[1]), stoi(tmp_str_items[0]));
+            }
+            continue;
+        }
+
+        if (split_line(line, tmp_str_items) >= 4 && tmp_str_items[0] == "4B" && tmp_str_items[1] == "SVD" && tmp_str_items[2] == "MORSE:")
+        {
+            const int nfile = stoi(tmp_str_items[3]);
+
+            if (rank == 0)
+                cout << "chimesFF: Will read " << nfile << " Morse-space 4B SVD files" << endl;
+
+            for (int t = 0; t < nfile; t++)
+            {
+                line = get_next_line(param_file);
+                if (split_line(line, tmp_str_items) != 2)
+                {
+                    cout << "ERROR: Expected 4B SVD MORSE line format: <quadidx> <file>" << endl;
+                    cout << "Line: " << line << endl;
+                    exit(0);
+                }
+                read_4B_svd_morse(join_path_chimes(param_file_path, tmp_str_items[1]), stoi(tmp_str_items[0]));
+            }
+            continue;
+        }
     }
+
+    for (size_t q = 0; q < svd_morse_dims.size(); q++)
+        if (!svd_morse_tensor[q].empty())
+            for (int m = 0; m < 6; m++)
+                exact_n4 = max(exact_n4, svd_morse_dims[q][m]);
 #endif
 
     param_file.close();
@@ -3410,6 +3481,104 @@ void chimesFF::compute_2B(const double dx, const vector<double> & dr, const vect
 
     force_scalar_in = force_scalar;
 }
+// 2B energy E and dE/dr at pair distance r for pair type pidx, penalty included; 0 at and beyond
+// the outer cutoff.  With a 2B table for the pair: cubic Hermite, O(1) lookup, one interpolant for
+// E and its derivative (forces consistent with energies), continued below the first node exactly
+// as the polynomials are continued below the inner cutoff.  Otherwise the Chebyshev sum, with the
+// coefficient sums formed before the cutoff function is applied.
+void chimesFF::eval_2B(int pidx, double r, double &E, double &dEdr, chimes2BTmp &tmp)
+{
+    E    = 0.0;
+    dEdr = 0.0;
+
+    const double rc = chimes_2b_cutoff[pidx][1];
+
+    if (r >= rc)
+        return;
+
+    double Epen, Dpen;
+
+#ifdef TABULATION
+    if (tabulate_2B_hermite && pidx < (int)tab_2b_h.size() && tab_2b_h[pidx].ngrid > 1)
+    {
+        const CP1DTable &T = tab_2b_h[pidx];
+        const double s = (r - T.r0) * T.invdr;
+
+        if (s >= 0.0)
+        {
+            int i = (int)s;
+            if (i > T.ngrid - 2)
+                i = T.ngrid - 2;
+
+            double t = s - i;
+            if (t > 1.0)
+                t = 1.0;
+
+            const chimes_tab_real *R0 = T.vd.data() + 2 * (size_t)i;   // E, dE/dr of nodes i and i+1
+            const double y0 = (double)R0[0];
+            const double m0 = (double)R0[1];
+            const double y1 = (double)R0[2];
+            const double m1 = (double)R0[3];
+
+            const double t2 = t * t;
+            const double t3 = t2 * t;
+
+            E    = (2.0*t3 - 3.0*t2 + 1.0) * y0 + (t3 - 2.0*t2 + t) * T.dr * m0 + (3.0*t2 - 2.0*t3) * y1 + (t3 - t2) * T.dr * m1;
+            dEdr = (6.0*t2 - 6.0*t) * T.invdr * (y0 - y1) + (3.0*t2 - 4.0*t + 1.0) * m0 + (3.0*t2 - 2.0*t) * m1;
+        }
+        else if (tab_2b_h_penalty[pidx])
+        {
+            // Converted scan file: no data below its first point (as before)
+            cout << "Distance is outside the tabulated range" << endl;
+            cout << r << endl;
+            exit(0);
+        }
+        else
+            cp1d_eval_range(T, r, rc, 0, 1, &E, &dEdr);
+
+        get_penalty(r, pidx, Epen, Dpen);   // also tracks badness
+
+        if (Epen > 0.0 && !tab_2b_h_penalty[pidx])
+        {
+            E    += Epen;
+            dEdr += Dpen;
+        }
+        return;
+    }
+#endif
+
+    vector<double> &Tn  = tmp.Tn;
+    vector<double> &Tnd = tmp.Tnd;
+
+    set_cheby_polys(Tn, Tnd, r, morse_var[pidx], chimes_2b_cutoff[pidx][0], rc, poly_orders[0]);
+
+    double fcut, fcutderiv;
+    get_fcut(r, rc, fcut, fcutderiv);
+
+    const int     n  = ncoeffs_2b[pidx];
+    const double *c  = chimes_2b_params[pidx].data();
+    const int    *pw = chimes_2b_pows[pidx].data();
+
+    double S = 0.0, Sd = 0.0;
+
+    for (int k = 0; k < n; k++)
+    {
+        S  += c[k] * Tn [pw[k] + 1];
+        Sd += c[k] * Tnd[pw[k] + 1];
+    }
+
+    E    = fcut * S;
+    dEdr = fcut * Sd + fcutderiv * S;
+
+    get_penalty(r, pidx, Epen, Dpen);
+
+    if (Epen > 0.0)
+    {
+        E    += Epen;
+        dEdr += Dpen;
+    }
+}
+
 #ifdef TABULATION
 void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const vector<int> typ_idxs, vector<double> & force, vector<double> & stress, double & energy, chimes2BTmp &tmp)
 {
@@ -3443,6 +3612,34 @@ void chimesFF::compute_2B_tab(const double dx, const vector<double> & dr, const 
 
     if (dx >= chimes_2b_cutoff[pair_idx][1])
         return;
+
+    if (tabulate_2B_hermite && pair_idx < (int)tab_2b_h.size() && tab_2b_h[pair_idx].ngrid > 1)
+    {
+        double E, D;
+        eval_2B(pair_idx, dx, E, D, tmp);
+
+        const double fs = D / dx;
+
+        energy += E;
+
+        force[0*CHDIM+0] += fs * dr[0];
+        force[0*CHDIM+1] += fs * dr[1];
+        force[0*CHDIM+2] += fs * dr[2];
+
+        force[1*CHDIM+0] -= fs * dr[0];
+        force[1*CHDIM+1] -= fs * dr[1];
+        force[1*CHDIM+2] -= fs * dr[2];
+
+        stress[0] -= fs * dr[0] * dr[0];
+        stress[1] -= fs * dr[0] * dr[1];
+        stress[2] -= fs * dr[0] * dr[2];
+        stress[3] -= fs * dr[1] * dr[1];
+        stress[4] -= fs * dr[1] * dr[2];
+        stress[5] -= fs * dr[2] * dr[2];
+
+        force_scalar_in = fs;
+        return;
+    }
 
     // Look up/interpolate for energy and force scalar
 
@@ -6188,6 +6385,11 @@ void chimesFF::read_4B_cp_tab(string data_file, int quadidx, int slot)
 #ifdef TABULATION
 void chimesFF::interpolateCP1DLinear(const CP1DTable &tab, double rquery, double *val, double *der, double rc)
 {
+    cp1d_eval_range(tab, rquery, rc, 0, tab.rank, val, der);
+}
+
+void chimesFF::cp1d_eval_range(const CP1DTable &tab, double rquery, double rc, int q0, int q1, double *val, double *der)
+{
     // Cubic Hermite interpolation from tabulated values and r-derivatives
     // (C1 continuous; the returned derivative is the exact derivative of the
     // returned value, so forces stay consistent with energies).
@@ -6238,20 +6440,20 @@ void chimesFF::interpolateCP1DLinear(const CP1DTable &tab, double rquery, double
         if (f0 != 1.0 || fd0 != 0.0)
         {
             const double inv_f0 = 1.0 / f0;
-            for (int q = 0; q < Q; q++)
+            for (int q = q0; q < q1; q++)
             {
                 const double p0  = (double)R0[q] * inv_f0;
                 const double pd0 = ((double)R0[Q + q] - fd0 * p0) * inv_f0;
                 const double p   = p0 + a * pd0;
-                val[q] = f * p;
-                der[q] = fd * p + f * damp * pd0;
+                val[q - q0] = f * p;
+                der[q - q0] = fd * p + f * damp * pd0;
             }
             return;
         }
-        for (int q = 0; q < Q; q++)
+        for (int q = q0; q < q1; q++)
         {
-            val[q] = (double)R0[q] + a * (double)R0[Q + q];
-            der[q] = damp * (double)R0[Q + q];
+            val[q - q0] = (double)R0[q] + a * (double)R0[Q + q];
+            der[q - q0] = damp * (double)R0[Q + q];
         }
         return;
     }
@@ -6276,15 +6478,15 @@ void chimesFF::interpolateCP1DLinear(const CP1DTable &tab, double rquery, double
     const double g01 = -g00;
     const double g11 =   3.0*t2 - 2.0*t;
 
-    for (int q = 0; q < Q; q++)
+    for (int q = q0; q < q1; q++)
     {
         const double y0 = (double)R0[q];
         const double m0 = (double)R0[Q + q];
         const double y1 = (double)R1[q];
         const double m1 = (double)R1[Q + q];
 
-        val[q] = h00*y0 + h10*m0 + h01*y1 + h11*m1;
-        der[q] = g00*y0 + g10*m0 + g01*y1 + g11*m1;
+        val[q - q0] = h00*y0 + h10*m0 + h01*y1 + h11*m1;
+        der[q - q0] = g00*y0 + g10*m0 + g01*y1 + g11*m1;
     }
 }
 #endif
@@ -7501,6 +7703,141 @@ static inline void chimes_accumulate_3b_force_stress_from_scalars(const std::vec
     }
 }
 
+// 2B table file (util/tensor_tools/chimes_cpd.py):
+//     CHIMES_2B_TABLE
+//     pair <pairidx> <atom type> <atom type>
+//     grid <ngrid> <r0> <dr>
+//     <ngrid rows: E dE/dr>
+//     END_CHIMES_2B_TABLE
+// The table holds fcut(r) * sum_k c_k T_k+1(x(r)) without the penalty (added in eval_2B).
+void chimesFF::read_2B_table_file(std::string table_file, int pairidx)
+{
+    ifstream in(table_file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 2B table file: " << table_file << endl;
+        exit(0);
+    }
+
+    if ((int)tab_2b_h.size() <= pairidx)
+    {
+        tab_2b_h.resize(pairidx + 1);
+        tab_2b_h_penalty.resize(pairidx + 1, 0);
+    }
+
+    CP1DTable &T = tab_2b_h[pairidx];
+    T = CP1DTable();
+    T.rank = 1;
+    tab_2b_h_penalty[pairidx] = 0;
+
+    string line;
+    vector<string> items;
+    bool saw_header = false, saw_grid = false;
+
+    while (getline(in, line))
+    {
+        const int n = split_line(line, items);
+        if (n == 0)
+            continue;
+
+        if (items[0] == "CHIMES_2B_TABLE")
+            saw_header = true;
+        else if (items[0] == "END_CHIMES_2B_TABLE")
+            break;
+        else if (items[0] == "pair" && n >= 2 && stoi(items[1]) != pairidx)
+        {
+            cout << "ERROR: 2B table " << table_file << " is for pair type " << items[1] << ", listed for " << pairidx << endl;
+            exit(0);
+        }
+        else if (items[0] == "grid" && n == 4)
+        {
+            T.ngrid = stoi(items[1]);
+            T.r0    = stod(items[2]);
+            T.dr    = stod(items[3]);
+            T.invdr = 1.0 / T.dr;
+            T.vd.resize(2 * (size_t)T.ngrid);
+
+            for (int row = 0; row < T.ngrid; row++)
+            {
+                if (!getline(in, line) || split_line(line, items) != 2)
+                {
+                    cout << "ERROR: bad 2B table row " << row << " in " << table_file << endl;
+                    exit(0);
+                }
+                T.vd[2*(size_t)row]     = static_cast<chimes_tab_real>(stod(items[0]));
+                T.vd[2*(size_t)row + 1] = static_cast<chimes_tab_real>(stod(items[1]));
+            }
+            saw_grid = true;
+        }
+    }
+
+    if (!saw_header || !saw_grid || T.ngrid < 2)
+    {
+        cout << "ERROR: incomplete 2B table file " << table_file << endl;
+        exit(0);
+    }
+
+    tabulate_2B_hermite = true;
+
+    if (rank == 0)
+        cout << "chimesFF: 2B table for pair type " << pairidx << ": " << T.ngrid << " points from " << T.r0 << " A, step " << T.dr << " A" << endl;
+}
+
+// TABULATED 2B scan files (r E, r force-scalar = (dE/dr)/r) on a uniform grid: store E and
+// dE/dr at the points as a Hermite table.  The scans include the penalty and start at their first
+// point, as before.  Non-uniform scans keep the old lookup.
+void chimesFF::convert_2B_scans()
+{
+    for (size_t p = 0; p < tab_r.size() && p < tab_e.size() && p < tab_f.size(); p++)
+    {
+        const vector<double> &r = tab_r[p];
+        const int n = (int)r.size();
+
+        if (n < 2 || (int)tab_e[p].size() != n || (int)tab_f[p].size() != n)
+            continue;
+
+        const double dr = (r[n-1] - r[0]) / (n - 1);
+        bool uniform = dr > 0.0;
+
+        for (int k = 0; k < n && uniform; k++)
+            uniform = fabs(r[k] - (r[0] + k * dr)) <= 1.0e-6 * dr;
+
+        if (!uniform)
+        {
+            if (rank == 0)
+                cout << "chimesFF: 2B scan for pair type " << p << " is not on a uniform grid: kept on the per-call spline" << endl;
+            continue;
+        }
+
+        if (tab_2b_h.size() <= p)
+        {
+            tab_2b_h.resize(p + 1);
+            tab_2b_h_penalty.resize(p + 1, 0);
+        }
+
+        CP1DTable &T = tab_2b_h[p];
+        T = CP1DTable();
+        T.rank  = 1;
+        T.ngrid = n;
+        T.r0    = r[0];
+        T.dr    = dr;
+        T.invdr = 1.0 / dr;
+        T.vd.resize(2 * (size_t)n);
+
+        for (int k = 0; k < n; k++)
+        {
+            T.vd[2*(size_t)k]     = static_cast<chimes_tab_real>(tab_e[p][k]);
+            T.vd[2*(size_t)k + 1] = static_cast<chimes_tab_real>(tab_f[p][k] * r[k]);
+        }
+
+        tab_2b_h_penalty[p] = 1;
+        tabulate_2B_hermite = true;
+
+        if (rank == 0)
+            cout << "chimesFF: 2B scan for pair type " << p << ": Hermite table, " << n << " points from " << T.r0 << " A, step " << dr << " A" << endl;
+    }
+}
+
 void chimesFF::read_3B_cp_file(std::string table_file, int tripidx)
 {
     ifstream in(table_file);
@@ -7663,5 +8000,617 @@ void chimesFF::compute_3B_cp_tab(const vector<double> & dx, const vector<double>
     force_scalar_in[0] = fs[0];
     force_scalar_in[1] = fs[1];
     force_scalar_in[2] = fs[2];
+}
+
+// ---------------------------------------------------------------------------
+// Pair-level CP access (subgraph reuse with a pair cache, see chimesFF.h)
+// ---------------------------------------------------------------------------
+
+static const int chimes_rt3_a[3] = {0, 0, 1};      // 3B runtime pair slot -> atoms
+static const int chimes_rt3_b[3] = {1, 2, 2};
+static const int chimes_rt4_a[6] = {0, 0, 0, 1, 1, 2};   // 4B runtime pair slot -> atoms
+static const int chimes_rt4_b[6] = {1, 2, 3, 2, 3, 3};
+
+bool chimesFF::cp4_uses_direct(int quadidx)
+{
+    return tabulate_4B_cp_direct && quadidx >= 0 && quadidx < (int)tab_4b_cp_direct_rank.size() && tab_4b_cp_direct_rank[quadidx] > 0;
+}
+
+bool chimesFF::cp4_uses_tables(int quadidx)
+{
+    return !cp4_uses_direct(quadidx) && tabulate_4B_cp && quadidx >= 0 && quadidx < (int)tab_4b_cp_rank.size() && tab_4b_cp_rank[quadidx] > 0;
+}
+
+int chimesFF::cp_num_tables_4B()
+{
+    return 6 * (int)ncoeffs_4b.size();
+}
+
+int chimesFF::cp_num_tables()
+{
+    return cp_num_tables_4B() + 3 * (int)ncoeffs_3b.size();
+}
+
+int chimesFF::cp_table_rank(int table)
+{
+    const int n4 = cp_num_tables_4B();
+
+    if (table < n4)
+    {
+        const int quadidx = table / 6;
+
+        if (cp4_uses_direct(quadidx))
+            return tab_4b_cp_direct_rank[quadidx];
+
+        if (cp4_uses_tables(quadidx))
+            return tab_4b_cp_rank[quadidx];
+
+        return 0;
+    }
+
+    const int tripidx = (table - n4) / 3;
+
+    if (tripidx < (int)tab_3b_cp.size())
+        return tab_3b_cp[tripidx].rank;
+
+    return 0;
+}
+
+double chimesFF::cp_table_cutoff(int table)
+{
+    const int n4 = cp_num_tables_4B();
+
+    if (table < n4)
+    {
+        const int quadidx = table / 6;
+        const int c = table % 6;
+
+        if (cp4_uses_direct(quadidx))
+            return chimes_4b_cutoff[quadidx][1][tab_4b_cp_direct_canon_to_param[quadidx][c]];
+
+        return chimes_4b_cutoff[quadidx][1][tab_4b_cp_canon_to_param[quadidx][c]];
+    }
+
+    const int tripidx = (table - n4) / 3;
+    const int c = (table - n4) % 3;
+
+    return chimes_3b_cutoff[tripidx][1][tab_3b_cp[tripidx].canon_to_param[c]];
+}
+
+void chimesFF::cp_table_eval(int table, int pair_type, double r, int q0, int q1, double *X, double *D)
+{
+    const int n4 = cp_num_tables_4B();
+
+    if (table < n4)
+    {
+        const int quadidx = table / 6;
+        const int c = table % 6;
+
+        if (cp4_uses_direct(quadidx))
+        {
+            // X_q(r) = sum_n A[n][q] fcut(r) T_n(r), as in eval_4B_cp_direct_slot
+            const int R = tab_4b_cp_direct_rank[quadidx];
+            const int pslot = tab_4b_cp_direct_canon_to_param[quadidx][c];
+            const int order = tab_4b_cp_direct_orders[quadidx][c];
+            const double rmin = chimes_4b_cutoff[quadidx][0][pslot];
+            const double rmax = chimes_4b_cutoff[quadidx][1][pslot];
+
+            if ((int)cp_eval_Tn.size() < order + 1)
+            {
+                cp_eval_Tn.resize(order + 1);
+                cp_eval_Tnd.resize(order + 1);
+            }
+
+            set_cheby_polys(cp_eval_Tn, cp_eval_Tnd, r, morse_var[pair_type], rmin, rmax, order);
+
+            double fcut, fcutderiv;
+            get_fcut(r, rmax, fcut, fcutderiv);
+
+            for (int q = q0; q < q1; q++)
+            {
+                X[q - q0] = 0.0;
+                D[q - q0] = 0.0;
+            }
+
+            const std::vector<chimes_tab_real> &A = tab_4b_cp_direct_factor[quadidx][c];
+
+            for (int p = 0; p <= order; p++)
+            {
+                const double G = fcut * cp_eval_Tn[p];
+                const double dG = fcutderiv * cp_eval_Tn[p] + fcut * cp_eval_Tnd[p];
+                const chimes_tab_real * __restrict a = A.data() + (size_t)p * (size_t)R;
+
+                for (int q = q0; q < q1; q++)
+                {
+                    X[q - q0] += (double)a[q] * G;
+                    D[q - q0] += (double)a[q] * dG;
+                }
+            }
+            return;
+        }
+
+        cp1d_eval_range(tab_4b_cp_slot[quadidx][c], r, chimes_4b_cutoff[quadidx][1][tab_4b_cp_canon_to_param[quadidx][c]], q0, q1, X, D);
+        return;
+    }
+
+    const int tripidx = (table - n4) / 3;
+    const int c = (table - n4) % 3;
+    const CP3BTable &T = tab_3b_cp[tripidx];
+
+    cp1d_eval_range(T.slot[c], r, chimes_3b_cutoff[tripidx][1][T.canon_to_param[c]], q0, q1, X, D);
+}
+
+// A cluster type that can never contribute: all coefficients zero, or a pair slot with an
+// outer cutoff <= its inner cutoff (no cluster of the type is ever inside its cutoffs).
+// util/tensor_tools/chimes_cpd.py skips such types, so they have no CP table.
+bool chimesFF::cluster_type_inert(int nbody, int typeidx)
+{
+    const vector<double> &par = (nbody == 3) ? chimes_3b_params[typeidx] : chimes_4b_params[typeidx];
+    const vector<vector<double> > &cut = (nbody == 3) ? chimes_3b_cutoff[typeidx] : chimes_4b_cutoff[typeidx];
+
+    bool zero = true;
+    for (size_t n = 0; n < par.size() && zero; n++)
+        zero = (par[n] == 0.0);
+
+    if (zero)
+        return true;
+
+    for (size_t s = 0; s < cut[0].size(); s++)
+        if (cut[1][s] <= cut[0][s])
+            return true;
+
+    return false;
+}
+
+bool chimesFF::cp3_cluster_info(const int *typ_idxs, CPClusterInfo &info)
+{
+    info = CPClusterInfo();
+
+    const int type_idx = typ_idxs[0]*natmtyps*natmtyps + typ_idxs[1]*natmtyps + typ_idxs[2];
+    const int tripidx = atom_int_trip_map[type_idx];
+
+    if (tripidx < 0)
+        return true;
+
+    info.type_index = tripidx;
+
+    const bool has_table = tabulate_3B_cp && tripidx < (int)tab_3b_cp.size() && tab_3b_cp[tripidx].rank > 0;
+
+    if (!has_table)
+        return ncoeffs_3b[tripidx] == 0 || cluster_type_inert(3, tripidx);   // true: no terms
+
+    const CP3BTable &T = tab_3b_cp[tripidx];
+    const vector<int> &mp = pair_int_trip_map[type_idx];
+
+    int param_to_runtime[3];
+    for (int r = 0; r < 3; r++)
+    {
+        param_to_runtime[mp[r]] = r;
+        info.rc_runtime[r] = chimes_3b_cutoff[tripidx][1][mp[r]];
+    }
+
+    info.rank = T.rank;
+
+    for (int c = 0; c < 3; c++)
+    {
+        const int r = param_to_runtime[T.canon_to_param[c]];
+        info.c2r[c] = r;
+        info.table[c] = cp_num_tables_4B() + tripidx*3 + (T.shared ? 0 : c);
+        info.pair_type[c] = atom_int_pair_map[typ_idxs[chimes_rt3_a[r]]*natmtyps + typ_idxs[chimes_rt3_b[r]]];
+    }
+
+    return true;
+}
+
+bool chimesFF::cp4_cluster_info(const int *typ_idxs, CPClusterInfo &info)
+{
+    info = CPClusterInfo();
+
+    const int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps + typ_idxs[1]*natmtyps*natmtyps + typ_idxs[2]*natmtyps + typ_idxs[3];
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return true;
+
+    info.type_index = quadidx;
+
+    const bool direct = cp4_uses_direct(quadidx);
+
+    if (!direct && !cp4_uses_tables(quadidx))
+        return ncoeffs_4b[quadidx] == 0 || cluster_type_inert(4, quadidx);   // true: no terms
+
+    const vector<int> &ctp = direct ? tab_4b_cp_direct_canon_to_param[quadidx] : tab_4b_cp_canon_to_param[quadidx];
+    const vector<int> &mp = pair_int_quad_map[idx];
+
+    int param_to_runtime[6];
+    for (int r = 0; r < 6; r++)
+    {
+        param_to_runtime[mp[r]] = r;
+        info.rc_runtime[r] = chimes_4b_cutoff[quadidx][1][mp[r]];
+    }
+
+    info.rank = direct ? tab_4b_cp_direct_rank[quadidx] : tab_4b_cp_rank[quadidx];
+
+    for (int c = 0; c < 6; c++)
+    {
+        const int r = param_to_runtime[ctp[c]];
+        info.c2r[c] = r;
+        info.table[c] = quadidx*6 + c;
+        info.pair_type[c] = atom_int_pair_map[typ_idxs[chimes_rt4_a[r]]*natmtyps + typ_idxs[chimes_rt4_b[r]]];
+    }
+
+    return true;
+}
+
+bool chimesFF::exact3_cluster_info(const int *typ_idxs, CPClusterInfo &info)
+{
+    info = CPClusterInfo();
+
+    const int type_idx = typ_idxs[0]*natmtyps*natmtyps + typ_idxs[1]*natmtyps + typ_idxs[2];
+    const int tripidx = atom_int_trip_map[type_idx];
+
+    if (tripidx < 0)
+        return true;
+
+    info.type_index = tripidx;
+
+    if (ncoeffs_3b[tripidx] == 0 || cluster_type_inert(3, tripidx))
+        return true;   // no terms
+
+    const vector<int> &mp = pair_int_trip_map[type_idx];
+
+    int param_to_runtime[3];
+    for (int r = 0; r < 3; r++)
+    {
+        param_to_runtime[mp[r]] = r;
+        info.rc_runtime[r] = chimes_3b_cutoff[tripidx][1][mp[r]];
+    }
+
+    info.rank = exact_n3;
+
+    for (int c = 0; c < 3; c++)
+    {
+        const int r = param_to_runtime[c];
+        info.c2r[c] = r;
+        info.table[c] = -1;
+        info.pair_type[c] = atom_int_pair_map[typ_idxs[chimes_rt3_a[r]]*natmtyps + typ_idxs[chimes_rt3_b[r]]];
+        info.rin[c] = chimes_3b_cutoff[tripidx][0][c];
+        info.rout[c] = chimes_3b_cutoff[tripidx][1][c];
+    }
+
+    return true;
+}
+
+void chimesFF::exact3_pair_eval(int pair_type, double rin, double rout, double r, double *G, double *dG)
+{
+    exact_pair_eval(pair_type, rin, rout, exact_n3, r, G, dG);
+}
+
+void chimesFF::exact_pair_eval(int pair_type, double rin, double rout, int n, double r, double *G, double *dG)
+{
+    // Same polynomials and cutoff function as compute_3B / compute_4B, basis size n
+    const int order = max(n - 1, 1);
+
+    if ((int)cp_eval_Tn.size() < order + 1)
+    {
+        cp_eval_Tn.resize(order + 1);
+        cp_eval_Tnd.resize(order + 1);
+    }
+
+    set_cheby_polys(cp_eval_Tn, cp_eval_Tnd, r, morse_var[pair_type], rin, rout, order);
+
+    double fcut = 0.0, fcutderiv = 0.0;
+    get_fcut(r, rout, fcut, fcutderiv);
+
+    for (int k = 0; k < n; k++)
+    {
+        G[k]  = fcut * cp_eval_Tn[k];
+        dG[k] = fcut * cp_eval_Tnd[k] + fcutderiv * cp_eval_Tn[k];
+    }
+}
+
+void chimesFF::exact3_dense_tensor(int tripidx, std::vector<double> &T)
+{
+    const int N = exact_n3;
+
+    T.assign((size_t)N * N * N, 0.0);
+
+    for (int coeffs = 0; coeffs < ncoeffs_3b[tripidx]; coeffs++)
+    {
+        const vector<int> &pw = chimes_3b_powers[tripidx][coeffs];
+        T[((size_t)pw[0] * N + pw[1]) * N + pw[2]] += chimes_3b_params[tripidx][coeffs];
+    }
+}
+
+// A 4B grid table (r-space SVD 3|3 or 4|2, coefficient tables) is read for this type: it is
+// evaluated by its own per-cluster code, not through pair reuse
+bool chimesFF::legacy_4b_table(int quadidx)
+{
+    if (tabulate_4B_svd3x3 && quadidx < (int)tab_4b_svd3x3_rank.size() && tab_4b_svd3x3_rank[quadidx] > 0)
+        return true;
+
+    if (tabulate_4B_svd4x2 && quadidx < (int)tab_4b_svd4x2_rank.size() && tab_4b_svd4x2_rank[quadidx] > 0)
+        return true;
+
+    if (tabulate_4B_coeff && quadidx < (int)tab_4b_ncoeff.size() && tab_4b_ncoeff[quadidx] > 0)
+        return true;
+
+    return false;
+}
+
+bool chimesFF::exact4_cluster_info(const int *typ_idxs, CPClusterInfo &info)
+{
+    info = CPClusterInfo();
+
+    const int idx = typ_idxs[0]*natmtyps*natmtyps*natmtyps + typ_idxs[1]*natmtyps*natmtyps + typ_idxs[2]*natmtyps + typ_idxs[3];
+    const int quadidx = atom_int_quad_map[idx];
+
+    if (quadidx < 0)
+        return true;
+
+    info.type_index = quadidx;
+
+    const bool svd = quadidx < (int)svd_morse_tensor.size() && !svd_morse_tensor[quadidx].empty();
+
+    if ((!svd && ncoeffs_4b[quadidx] == 0) || cluster_type_inert(4, quadidx))
+        return true;   // no terms
+
+    if (legacy_4b_table(quadidx))
+        return false;
+
+    const vector<int> &mp = pair_int_quad_map[idx];
+
+    int param_to_runtime[6];
+    for (int r = 0; r < 6; r++)
+    {
+        param_to_runtime[mp[r]] = r;
+        info.rc_runtime[r] = chimes_4b_cutoff[quadidx][1][mp[r]];
+    }
+
+    info.rank = exact_n4;
+
+    for (int c = 0; c < 6; c++)
+    {
+        const int r = param_to_runtime[c];
+        info.c2r[c] = r;
+        info.table[c] = -1;
+        info.pair_type[c] = atom_int_pair_map[typ_idxs[chimes_rt4_a[r]]*natmtyps + typ_idxs[chimes_rt4_b[r]]];
+        info.rin[c] = chimes_4b_cutoff[quadidx][0][c];
+        info.rout[c] = chimes_4b_cutoff[quadidx][1][c];
+    }
+
+    return true;
+}
+
+void chimesFF::exact4_dense_tensor(int quadidx, std::vector<double> &T)
+{
+    const int N = exact_n4;
+    const size_t N2 = (size_t)N * N;
+
+    T.assign(N2 * N2 * N2, 0.0);
+
+    if (quadidx < (int)svd_morse_tensor.size() && !svd_morse_tensor[quadidx].empty())
+    {
+        // Morse-space SVD: the tensor its factors represent, padded to N per slot
+        const std::array<int,6> &d = svd_morse_dims[quadidx];
+        const vector<double> &S = svd_morse_tensor[quadidx];
+        size_t f = 0;
+
+        for (int n0 = 0; n0 < d[0]; n0++)
+            for (int n1 = 0; n1 < d[1]; n1++)
+                for (int n2 = 0; n2 < d[2]; n2++)
+                    for (int n3 = 0; n3 < d[3]; n3++)
+                        for (int n4 = 0; n4 < d[4]; n4++)
+                            for (int n5 = 0; n5 < d[5]; n5++)
+                                T[((((n0*(size_t)N + n1)*N + n2)*N + n3)*N + n4)*N + n5] = S[f++];
+        return;
+    }
+
+    for (int coeffs = 0; coeffs < ncoeffs_4b[quadidx]; coeffs++)
+    {
+        const vector<int> &pw = chimes_4b_powers[quadidx][coeffs];
+        T[((((pw[0]*(size_t)N + pw[1])*N + pw[2])*N + pw[3])*N + pw[4])*N + pw[5]] += chimes_4b_params[quadidx][coeffs];
+    }
+}
+
+// Morse-space SVD of one 4B type (util/tensor_tools/chimes_tabulate.py --4b svd33 / svd42):
+//     CHIMES_4B_SVD_MORSE
+//     quad <quadidx> <atom types>
+//     split 3|3                      (or 4|2; informational)
+//     left <parameter slots>         (order of the left factor's row index, first slowest)
+//     right <parameter slots>
+//     dims <basis size of the six parameter slots>
+//     rank <K>
+//     L <rows> <K>   then rows of K numbers
+//     R <rows> <K>   then rows of K numbers
+//     END_CHIMES_4B_SVD_MORSE
+// Other lines (singular values, errors) are ignored.  The tensor is
+//     T[slots] = sum_k L[left index][k] R[right index][k]
+// in the basis G_n = fcut T_n(x) of compute_4B (x: the Morse variable), so the factors are
+// exact: no grid.  It is checked against the parameter file's coefficients.
+void chimesFF::read_4B_svd_morse(std::string file, int quadidx)
+{
+    ifstream in(file);
+    if (!in.is_open())
+    {
+        cout << "ERROR: Could not open 4B SVD MORSE file: " << file << endl;
+        exit(0);
+    }
+
+    int dims[6] = { 0, 0, 0, 0, 0, 0 };
+    vector<int> left, right;
+    int K = -1;
+    vector<double> L, R;
+    bool saw_header = false;
+
+    string line;
+    vector<string> items;
+
+    auto read_matrix = [&](vector<double> &M, int rows, int cols)
+    {
+        M.assign((size_t)rows * cols, 0.0);
+
+        for (int i = 0; i < rows; i++)
+        {
+            if (!getline(in, line) || split_line(line, items) != cols)
+            {
+                cout << "ERROR: bad matrix row " << i << " in 4B SVD MORSE file " << file << endl;
+                exit(0);
+            }
+            for (int j = 0; j < cols; j++)
+                M[(size_t)i * cols + j] = stod(items[j]);
+        }
+    };
+
+    while (getline(in, line))
+    {
+        const int n = split_line(line, items);
+        if (n == 0)
+            continue;
+
+        if (items[0] == "CHIMES_4B_SVD_MORSE")
+            saw_header = true;
+        else if (items[0] == "END_CHIMES_4B_SVD_MORSE")
+            break;
+        else if (items[0] == "quad" && n >= 2 && stoi(items[1]) != quadidx)
+        {
+            cout << "ERROR: 4B SVD MORSE file " << file << " is for quadruplet type " << items[1] << ", listed for " << quadidx << endl;
+            exit(0);
+        }
+        else if (items[0] == "left")
+        {
+            for (int m = 1; m < n; m++)
+                left.push_back(stoi(items[m]));
+        }
+        else if (items[0] == "right")
+        {
+            for (int m = 1; m < n; m++)
+                right.push_back(stoi(items[m]));
+        }
+        else if (items[0] == "dims" && n == 7)
+        {
+            for (int m = 0; m < 6; m++)
+                dims[m] = stoi(items[m + 1]);
+        }
+        else if (items[0] == "rank" && n == 2)
+            K = stoi(items[1]);
+        else if ((items[0] == "L" || items[0] == "R") && n == 3)
+        {
+            const int rows = stoi(items[1]);
+            const int cols = stoi(items[2]);
+            read_matrix(items[0] == "L" ? L : R, rows, cols);
+        }
+    }
+
+    // Consistency of the description
+    vector<int> seen(6, 0);
+    for (int s : left)  if (s >= 0 && s < 6) seen[s]++;
+    for (int s : right) if (s >= 0 && s < 6) seen[s]++;
+
+    bool ok = saw_header && K > 0 && left.size() + right.size() == 6;
+    for (int m = 0; m < 6 && ok; m++)
+        ok = (seen[m] == 1 && dims[m] > 0);
+
+    size_t nl = 1, nr = 1;
+    for (int s : left)  nl *= ok ? dims[s] : 1;
+    for (int s : right) nr *= ok ? dims[s] : 1;
+
+    if (!ok || L.size() != nl * K || R.size() != nr * K)
+    {
+        cout << "ERROR: incomplete or inconsistent 4B SVD MORSE file " << file << endl;
+        exit(0);
+    }
+
+    // T in slot order (parameter slots, dims[] per slot, last slot fastest)
+    size_t ntot = nl * nr;
+    vector<double> T(ntot, 0.0);
+    vector<size_t> stride(6, 1);
+    for (int m = 4; m >= 0; m--)
+        stride[m] = stride[m + 1] * dims[m + 1];
+
+    vector<int> nidx(6, 0);
+    for (size_t li = 0; li < nl; li++)
+    {
+        size_t rest = li;
+        for (int m = (int)left.size() - 1; m >= 0; m--)
+        {
+            nidx[left[m]] = (int)(rest % dims[left[m]]);
+            rest /= dims[left[m]];
+        }
+
+        for (size_t ri = 0; ri < nr; ri++)
+        {
+            size_t rr = ri;
+            for (int m = (int)right.size() - 1; m >= 0; m--)
+            {
+                nidx[right[m]] = (int)(rr % dims[right[m]]);
+                rr /= dims[right[m]];
+            }
+
+            double v = 0.0;
+            for (int k = 0; k < K; k++)
+                v += L[li * K + k] * R[ri * K + k];
+
+            size_t f = 0;
+            for (int m = 0; m < 6; m++)
+                f += nidx[m] * stride[m];
+            T[f] = v;
+        }
+    }
+
+    // Check against the parameter file's coefficients (same tensor at full rank)
+    vector<double> C(ntot, 0.0);
+    bool outside = false;
+
+    if (quadidx < (int)chimes_4b_powers.size())
+    {
+        for (int coeffs = 0; coeffs < ncoeffs_4b[quadidx]; coeffs++)
+        {
+            const vector<int> &pw = chimes_4b_powers[quadidx][coeffs];
+            size_t f = 0;
+            for (int m = 0; m < 6; m++)
+            {
+                if (pw[m] >= dims[m])
+                    outside = true;
+                f += min(pw[m], dims[m] - 1) * stride[m];
+            }
+            if (!outside)
+                C[f] += chimes_4b_params[quadidx][coeffs];
+        }
+    }
+
+    double num = 0.0, den = 0.0;
+    for (size_t f = 0; f < ntot; f++)
+    {
+        num += (T[f] - C[f]) * (T[f] - C[f]);
+        den += C[f] * C[f];
+    }
+    const double rel = (den > 0.0) ? sqrt(num / den) : sqrt(num);
+
+    if ((int)svd_morse_tensor.size() <= quadidx)
+    {
+        svd_morse_tensor.resize(quadidx + 1);
+        svd_morse_dims.resize(quadidx + 1);
+        svd_morse_rank.resize(quadidx + 1, 0);
+    }
+
+    svd_morse_tensor[quadidx] = T;
+    for (int m = 0; m < 6; m++)
+        svd_morse_dims[quadidx][m] = dims[m];
+    svd_morse_rank[quadidx] = K;
+    tabulate_4B_svd_morse = true;
+
+    if (rank == 0)
+    {
+        cout << "chimesFF: Morse-space 4B SVD for quadruplet type " << quadidx << ": " << K << " terms, "
+             << left.size() << "|" << right.size() << " split, from " << file << endl;
+        const ios_base::fmtflags fl = cout.flags();
+        cout << "chimesFF: \trelative difference to the parameter file's 4B coefficients: " << scientific << setprecision(2) << rel << endl;
+        cout.flags(fl);
+        if (outside)
+            cout << "WARNING: the parameter file has 4B powers beyond the SVD file's basis for quadruplet type " << quadidx << endl;
+        else if (rel > 1.0e-8)
+            cout << "WARNING: the SVD file does not reproduce the parameter file's 4B coefficients (truncated or from another file); its tensor is used" << endl;
+    }
 }
 #endif

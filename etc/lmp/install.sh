@@ -33,7 +33,7 @@ elif [ "$1" = "TABULATION" ]; then
     TAB_FLAG="-DTABULATION"
     echo "Enabling TABULATION compilation flag for ChIMES files"
 elif [ "$1" = "TABULATION_PROF" ]; then
-    TAB_FLAG="-DTABULATION -DCHIMES_PROFILE -DCHIMES_PROFILE_EVERY=5"
+    TAB_FLAG="-DTABULATION -DCHIMES_PROFILE -DCHIMES_PROFILE_EVERY=5 -DCHIMES_PAIR_REUSE"
     echo "Enabling TABULATION compilation flag for ChIMES files"
 elif [ "$1" = "BOTH" ]; then
     DO_BOTH=1
