@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
-chimes_cpd.py (CP-only version) -- CP decomposition (CPD) of every 3-body and
-4-body interaction in a ChIMES parameter file, with automatic rank selection,
-1D CP tables at a chosen density and a ready-to-run parameter file.
-
-This version writes CP evaluation paths only (3B CP tables, 4B CP tables or
-4B CP-direct factors).  It has no option for the exact factored evaluators,
-and it removes any "3B/4B EVALUATOR:" line from the input file, so the output
-never selects them.
+chimes_cpd.py -- CP decomposition (CPD) of every 3-body and 4-body interaction
+in a ChIMES parameter file, with automatic rank selection, 1D CP tables at a
+chosen density and a ready-to-run parameter file.
 
     python3 chimes_cpd.py params.txt [--h3 0.002] [--h4 0.005] [options]
 
@@ -65,13 +60,25 @@ with it (the optimiser, not the rank, is then the limit).
 
 Modes
   --3b tables     symmetric/general CP 1D tables ("3B CP TABLES:")      [default]
+  --3b factored   no CPD; exact factored evaluator ("3B EVALUATOR: FACTORED")
   --3b keep       leave the 3B as in the input file
   --4b tables     CP 1D tables ("4B CP TABLES:")                        [default]
   --4b direct     exact CP factors, Chebyshev at run time ("4B CP DIRECT:")
+  --4b factored   no CPD; exact factored evaluator ("4B EVALUATOR: FACTORED")
   --4b keep       leave the 4B as in the input file
-  --4b tables,direct     one parameter file per mode (CPD done once)
+  --4b tables,factored   one parameter file per mode (CPD done once)
+  --2b tables     2B Hermite tables ("2B TABLES:", one per pair type)     [default]
   --2b keep       keep 2B TABULATED tags (tables are copied next to the output)
   --2b direct     drop 2B TABULATED tags (polynomial 2B)
+
+2B tables hold E(r) = fcut(r) sum_k c_k T_k+1(x(r)) and dE/dr at uniform nodes
+(step <= --h2, inner cutoff, Tersoff switch-on point and outer cutoff on nodes),
+interpolated by chimesFF as a cubic Hermite with an O(1) lookup and continued
+below the first node exactly as the polynomials are.  The penalty is not in the
+table: chimesFF adds it exactly.  They are checked like the 3B/4B tables, on
+distances sampled uniformly in [inner - 0.02 A, outer], and h is always halved
+until the force error is <= --ftol (2B tables are a few tens of KiB).
+Pair types whose coefficients are not in the file keep their TABULATED scans.
 
 The output parameter files need a chimesFF built with -DTABULATION when any
 table or CP file is used.  The 3B coefficients stay in the file (needed when
@@ -79,7 +86,7 @@ table or CP file is used.  The 3B coefficients stay in the file (needed when
 
 Examples
   python3 chimes_cpd.py published_params.Si.2+3+4b.HSE06.tabulated --outdir Si_HSE06_cpd
-  python3 chimes_cpd.py params.txt --density 500 --4b tables,direct --workers 4
+  python3 chimes_cpd.py params.txt --density 500 --4b tables,factored --workers 4
   python3 chimes_cpd.py params.txt --dry-run          # cutoffs and rank estimates only
 """
 
@@ -98,8 +105,7 @@ for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 import numpy as np  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))      # util/tensor_tools when run from the repository
-sys.path.insert(0, HERE)                       # cp_fit.py / chimes_params.py next to this file
+sys.path.insert(0, HERE)
 from chimes_params import ChimesParams, slot_basis, fcut_and_deriv, eval_dense, INNER_SMOOTH_DISTANCE  # noqa: E402
 from cp_fit import (cp_als, lm_polish, cp_full, balance, is_symmetric3, sym_cp_fit, table_grid,  # noqa: E402
                     write_cp_tab_3b, write_cp_tab_4b, write_cp_direct_4b)
@@ -259,6 +265,49 @@ def interp_table(T, r, rc, fcut_type, fcut_var):
             val[below] = V[0] + a * Dv[0]
             der[below] = damp * Dv[0]
     return val, der
+
+
+# ----------------------------------------------------------------------------- 2B tables
+def run_2b_table(P, pidx, h, cfg):
+    """Hermite table of the 2B energy of one pair type (no penalty), checked on
+    distances sampled uniformly in [inner - 0.02 A, outer]; h is halved until the
+    force error is <= --ftol (or h < --h-min): 2B tables are small."""
+    t0 = time.time()
+    p = P.pairs[pidx]
+    slot = dict(pair=p["a"] + p["b"], rmin=p["smin"], rmax=p["smax"], morse=p["morse"])
+    nmax = P.poly_orders[0] + 1
+    A = np.zeros((nmax, 1))
+    for k, c in p["coeffs2b"]:
+        A[k + 1, 0] += c                       # power k multiplies T_k+1 (chimesFF::compute_2B)
+    rng = np.random.default_rng(cfg["seed"] + 7919 * pidx)
+    r = rng.uniform(slot["rmin"] - 0.02, slot["rmax"], cfg["samples"])
+    G, D = slot_basis(r, slot, nmax, P.fcut_type, P.fcut_var)
+    Er, dEr = (G @ A)[:, 0], (D @ A)[:, 0]
+    while True:
+        T = make_table(slot, A, h, P.fcut_type, P.fcut_var)
+        V, Dv = interp_table(T, r, slot["rmax"], P.fcut_type, P.fcut_var)
+        te = rel_errors(V[:, 0], Dv[:, 0], Er, dEr)
+        if te["F_rms"] <= cfg["ftol"] or h / 2 < cfg["h_min"]:   # always refined: 2B tables are small
+            break
+        h /= 2
+    n = len(T["V"])
+    print(f"  2B pair {pidx} {slot['pair']}: table step {T['dr']:.4g} A, {n} nodes from {T['r0']:g} A: "
+          f"E err {te['E_rms']:.2e}  F err {te['F_rms']:.2e}  F max {te['F_max']:.2e}"
+          + ("" if te["F_rms"] <= cfg["ftol"] else f"  (> --ftol {cfg['ftol']:.1e}; use a finer --h2 or --auto-h)"))
+    return dict(pair=slot["pair"], pair_index=pidx, h=h, r0=T["r0"], dr=T["dr"], ngrid=n, V=T["V"][:, 0],
+                Dv=T["Dv"][:, 0], seconds=round(time.time() - t0, 2), **{"tab_" + k: v for k, v in te.items()})
+
+
+def write_tab_2b(fname, pidx, a, b, T):
+    """2B table file read by chimesFF::read_2B_table_file."""
+    with open(fname, "w") as f:
+        f.write("CHIMES_2B_TABLE\n")
+        f.write(f"pair {pidx} {a} {b}\n")
+        f.write(f"relative_rms_errors energy {T['tab_E_rms']:.3e} force {T['tab_F_rms']:.3e}\n")
+        f.write(f"grid {T['ngrid']} {T['r0']:.17e} {T['dr']:.17e}\n")
+        for v, d in zip(T["V"], T["Dv"]):
+            f.write(f"{v:.17e} {d:.17e}\n")
+        f.write("END_CHIMES_2B_TABLE\n")
 
 
 # ----------------------------------------------------------------------------- one cluster type
@@ -481,7 +530,7 @@ def run_type(job):
 
 # ----------------------------------------------------------------------------- parameter file
 BLOCK_KEYS = ("3B CP TABLES:", "4B CP TABLES:", "4B CP DIRECT:", "4B COEFF TABLES:",
-              "4B SVD3X3 TABLES:", "4B SVD4X2 TABLES:")
+              "4B SVD3X3 TABLES:", "4B SVD4X2 TABLES:", "2B TABLES:")
 
 
 def _strip_tab_tag(line):
@@ -493,10 +542,11 @@ def _strip_tab_tag(line):
     return lead + " ".join(it[:k] + it[k + 2:])
 
 
-def write_param(src, dst, tabdir, blocks, m3, m4, mode2b, header):
+def write_param(src, dst, tabdir, blocks, m3, m4, mode2b, header, tab2b=()):
     """Copy src to dst with: old table/evaluator blocks removed, TABULATED tags
-    removed from replaced 3B/4B types, 2B tables copied into tabdir (or their
-    tags dropped), and the new blocks inserted before ENDFILE."""
+    removed from replaced 3B/4B types and from 2B pair types with a new 2B table
+    (tab2b), other 2B scans copied into tabdir (or their tags dropped), and the
+    new blocks inserted before ENDFILE."""
     src_dir = os.path.dirname(os.path.abspath(src))   # chimesFF: get_directory_path(paramfile)
     dst_dir = os.path.dirname(os.path.abspath(dst))
     lines = open(src, errors="ignore").read().splitlines()
@@ -512,10 +562,9 @@ def write_param(src, dst, tabdir, blocks, m3, m4, mode2b, header):
         elif st.startswith("PAIR CHEBYSHEV PARAMS") or st.startswith("PAIRTYPE PARAMS:"):
             section = 2
         if any(st.startswith(k) for k in BLOCK_KEYS):
-            i += 1 + int(st.split()[3])
+            i += 1 + int(st.split()[-1])
             continue
-        if st.startswith("3B EVALUATOR:") or st.startswith("4B EVALUATOR:"):
-            print(f"  note: removed '{st}' from the output (CP-only version)")
+        if (st.startswith("3B EVALUATOR:") and m3 != "keep") or (st.startswith("4B EVALUATOR:") and m4 != "keep"):
             i += 1
             continue
         if st.startswith("ENDFILE"):
@@ -526,7 +575,7 @@ def write_param(src, dst, tabdir, blocks, m3, m4, mode2b, header):
         if st.startswith("PAIRTYPE PARAMS:") and "TABULATED" in st.split():
             it = st.split()
             path = it[it.index("TABULATED") + 1]
-            if mode2b == "direct":
+            if mode2b == "direct" or (mode2b == "tables" and int(it[2]) in tab2b):
                 s = _strip_tab_tag(s)
             else:
                 base = os.path.basename(path)
@@ -554,6 +603,7 @@ def main():
     g = ap.add_argument_group("tabulation density")
     g.add_argument("--h3", type=float, default=None, help="3B table step in A (default 0.002)")
     g.add_argument("--h4", type=float, default=None, help="4B table step in A (default 0.005)")
+    g.add_argument("--h2", type=float, default=None, help="2B table step in A (default 0.002)")
     g.add_argument("--density", type=float, default=None,
                    help="table nodes per A for both 3B and 4B (h = 1/density); --h3/--h4 override")
     g.add_argument("--auto-h", action="store_true", help="halve h until the tabulated force error <= --ftol")
@@ -590,10 +640,10 @@ def main():
     g.add_argument("--seed", type=int, default=0)
     g.add_argument("--no-symmetric", action="store_true", help="general CP for homo-atomic 3B types too")
     g = ap.add_argument_group("what to write")
-    g.add_argument("--3b", dest="m3", default="tables", choices=["tables", "keep"])
+    g.add_argument("--3b", dest="m3", default="tables", choices=["tables", "factored", "keep"])
     g.add_argument("--4b", dest="m4", default="tables",
-                   help="comma list of: tables, direct, keep (one parameter file each)")
-    g.add_argument("--2b", dest="m2", default="keep", choices=["keep", "direct"])
+                   help="comma list of: tables, direct, factored, keep (one parameter file each)")
+    g.add_argument("--2b", dest="m2", default="tables", choices=["tables", "keep", "direct"])
     g.add_argument("--types3", default="all", help="3B type indices to decompose (comma list, all or none)")
     g.add_argument("--types4", default="all", help="4B type indices to decompose (comma list, all or none)")
     g.add_argument("--outdir", default=None, help="default: <param name>_cpd")
@@ -612,10 +662,11 @@ def main():
 
     m4s = [m.strip() for m in args.m4.split(",") if m.strip()]
     for m in m4s:
-        if m not in ("tables", "direct", "keep"):
+        if m not in ("tables", "direct", "factored", "keep"):
             ap.error(f"--4b: unknown mode {m}")
     h3 = args.h3 or (1.0 / args.density if args.density else 0.002)
     h4 = args.h4 or (1.0 / args.density if args.density else 0.005)
+    h2 = args.h2 or (1.0 / args.density if args.density else 0.002)
     cfg = dict(tol=args.tol, ftol=args.ftol, ftol_cp=args.ftol_cp or args.ftol / 10, kappa_max=args.kappa_max,
                rank={3: args.rank3, 4: args.rank4}, fixed_rank=args.fixed_rank, max_rank=args.max_rank,
                grow=args.grow, rank_resolution=args.rank_resolution, n_init=args.n_init, drop_tries=args.drop_tries,
@@ -635,7 +686,7 @@ def main():
 
     print(f"{args.param}: atoms {P.atom_types}, polynomial orders {P.poly_orders}, "
           f"cutoff function {P.fcut_type}{'' if P.fcut_var is None else ' ' + str(P.fcut_var)}")
-    print(f"tables: 3B step {h3:g} A, 4B step {h4:g} A{' (auto-refined)' if args.auto_h else ''}; "
+    print(f"tables: 2B step {h2:g} A, 3B step {h3:g} A, 4B step {h4:g} A{' (auto-refined)' if args.auto_h else ''}; "
           f"tol {args.tol:g}, ftol {args.ftol:g}, ftol-cp {cfg['ftol_cp']:g}, kappa-max {args.kappa_max:g}")
 
     # ---- jobs
@@ -677,6 +728,20 @@ def main():
                              tabulate=(body == 3 or "tables" in m4s), fcut_type=P.fcut_type, fcut_var=P.fcut_var))
     for s in skipped:
         print(f"  skipped: {s}")
+    # ---- 2B tables (fast: done here, before the CP decompositions)
+    tab2b = {}
+    if args.m2 == "tables":
+        for pidx in sorted(P.pairs):
+            p = P.pairs[pidx]
+            name2 = p["a"] + p["b"]
+            if len(p.get("coeffs2b", [])) < P.poly_orders[0]:
+                print(f"  2B pair {pidx} {name2}: coefficients not in the file; TABULATED scans kept")
+                continue
+            if args.dry_run:
+                print(f"  2B pair {pidx} {name2}: [{p['smin']:g}, {p['smax']:g}] A, morse {p['morse']:g}, "
+                      f"{len(p['coeffs2b'])} coefficients")
+                continue
+            tab2b[pidx] = run_2b_table(P, pidx, h2, cfg)
     if args.dry_run:
         for j in jobs:
             lb, guess, ub = rank_estimates(j["X"], j["sym"], args.tol)
@@ -720,8 +785,14 @@ def main():
 
     # ---- write
     os.makedirs(os.path.join(outdir, tabdir), exist_ok=True)
-    lines = {"3B CP TABLES": [], "4B CP TABLES": [], "4B CP DIRECT": []}
-    report = dict(param=os.path.abspath(args.param), settings={k: v for k, v in cfg.items()}, types=[])
+    lines = {"3B CP TABLES": [], "4B CP TABLES": [], "4B CP DIRECT": [], "2B TABLES": []}
+    for pidx, T2 in sorted(tab2b.items()):
+        p = P.pairs[pidx]
+        fn = f"chimes_2b.pair_{pidx}.dat"
+        write_tab_2b(os.path.join(outdir, tabdir, fn), pidx, p["a"], p["b"], T2)
+        lines["2B TABLES"].append(f"{pidx} {tabdir}/{fn}")
+    report = dict(param=os.path.abspath(args.param), settings={k: v for k, v in cfg.items()}, types=[],
+                  pairs_2b=[{k: v for k, v in T2.items() if k not in ("V", "Dv")} for _, T2 in sorted(tab2b.items())])
     for (body, t), (r, j) in sorted(byjob.items()):
         A, R = r["A"], r["rank"]
         err = r["metrics"]["coef_err"]
@@ -750,23 +821,29 @@ def main():
     written = []
     for k, m4 in enumerate(m4s):
         blocks = []
+        if lines["2B TABLES"]:
+            blocks += [f"2B TABLES: {len(lines['2B TABLES'])}"] + lines["2B TABLES"]
         if args.m3 == "tables" and lines["3B CP TABLES"]:
             blocks += [f"3B CP TABLES: {len(lines['3B CP TABLES'])}"] + lines["3B CP TABLES"]
+        elif args.m3 == "factored":
+            blocks.append("3B EVALUATOR: FACTORED")
         if m4 == "tables" and lines["4B CP TABLES"]:
             blocks += [f"4B CP TABLES: {len(lines['4B CP TABLES'])}"] + lines["4B CP TABLES"]
         elif m4 == "direct" and lines["4B CP DIRECT"]:
             blocks += [f"4B CP DIRECT: {len(lines['4B CP DIRECT'])}"] + lines["4B CP DIRECT"]
-        tag3 = {"tables": "cp" if lines["3B CP TABLES"] else "orig", "keep": "orig"}[args.m3]
+        elif m4 == "factored":
+            blocks.append("4B EVALUATOR: FACTORED")
+        tag3 = {"tables": "cp" if lines["3B CP TABLES"] else "orig", "factored": "factored", "keep": "orig"}[args.m3]
         tag4 = {"tables": "cp" if lines["4B CP TABLES"] else "orig", "direct": "cpdirect" if lines["4B CP DIRECT"]
-                else "orig", "keep": "orig"}[m4]
+                else "orig", "factored": "factored", "keep": "orig"}[m4]
         out = args.out if (args.out and k == 0) else f"{stem}.3b-{tag3}.4b-{tag4}{ext}"
         ranks = ", ".join(f"{r['body']}B type {r['type']} rank {r['rank']}" for r in results)
         header = [f"! Generated by util/tensor_tools/chimes_cpd.py from {name} ({time.strftime('%Y-%m-%d')})",
                   f"! 3B: {args.m3}, 4B: {m4}, 2B: {args.m2}; CP ranks: {ranks or 'none'}",
-                  f"! table steps: 3B {h3:g} A, 4B {h4:g} A; needs chimesFF built with -DTABULATION",
+                  f"! table steps: 2B {h2:g} A, 3B {h3:g} A, 4B {h4:g} A; needs chimesFF built with -DTABULATION",
                   "!"]
         dst = os.path.join(outdir, out)
-        write_param(args.param, dst, tabdir, blocks, args.m3, m4, args.m2, header)
+        write_param(args.param, dst, tabdir, blocks, args.m3, m4, args.m2, header, set(tab2b))
         written.append(dst)
     report["parameter_files"] = written
     report["seconds"] = round(time.time() - t0, 1)
@@ -782,6 +859,10 @@ def main():
               f"{min(tb.get('steps', [float('nan')])):7.4f} {tb.get('tab_F_rms', float('nan')):9.2e} "
               f"{tb.get('tab_F_max', float('nan')):9.2e} {tb.get('bytes', 0) / 1024:7.0f} {r['seconds']:6.1f}"
               + ("" if r["converged"] else "  NOT CONVERGED"))
+    for pidx, T2 in sorted(tab2b.items()):
+        print(f"{'2B pair ' + str(pidx) + ' ' + T2['pair']:28s} {'-':>5s} {'-':>5s} {'-':>5s} {'-':>9s} {'-':>6s} {'-':>9s} "
+              f"{T2['dr']:7.4f} {T2['tab_F_rms']:9.2e} {T2['tab_F_max']:9.2e} {T2['ngrid'] * 16 / 1024:7.0f} "
+              f"{T2['seconds']:6.1f}")
     print(f"\nwrote {', '.join(written)}\n      tables and cpd_report.json in {os.path.join(outdir, tabdir)}/ "
           f"({time.time() - t0:.1f}s)")
 

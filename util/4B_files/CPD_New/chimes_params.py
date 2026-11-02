@@ -129,6 +129,23 @@ class ChimesParams:
                         jt = _split(L[i])
                         target[jt[0]] = (jt[1:1 + npair],
                                          [float(x) for x in jt[1 + npair:1 + 2 * npair]])
+            elif s.strip().startswith("PAIRTYPE PARAMS:"):
+                # As chimesFF::read_parameters: one line after the header, then poly_orders[0]
+                # lines "power coefficient" (power k multiplies T_k+1).  A TABULATED tag
+                # (2B scan files) does not remove the coefficients from the file.
+                idx = int(it[2])
+                coeffs = []
+                i += 2
+                for _ in range(self.poly_orders[0] if self.poly_orders else 0):
+                    jt = _split(L[i]) if i < n else []
+                    if len(jt) < 2:
+                        break
+                    coeffs.append((int(jt[0]), float(jt[1])))
+                    i += 1
+                if idx in self.pairs:
+                    self.pairs[idx]["coeffs2b"] = coeffs
+                    self.pairs[idx]["tabulated2b"] = "TABULATED" in it
+                continue
             elif s.strip().startswith("TRIPLETTYPE PARAMS:"):
                 i = self._parse_cluster_block(i, 3)
                 continue
