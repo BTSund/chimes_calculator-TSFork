@@ -605,59 +605,59 @@ static void chimes_profile_report(MPI_Comm world, int me, long long timestep)
 #endif
 // ==== CHIMES_PROFILE BLOCK END ====
 
-/*  Functions required by LAMMPS:
+/*	Functions required by LAMMPS:
 
 
-settings    (done)      reads the input script line with arguments defined here
-coeff       (done)      set coefficients for one i,j pair type
-compute     (done)      workhorse routine that computes pairwise interactions
-init_one    (done)      perform initalization for one i,j type pair
-init_style  (done)      initialization specific to this pair style
+settings 	(done)		reads the input script line with arguments defined here
+coeff		(done)		set coefficients for one i,j pair type
+compute		(done)		workhorse routine that computes pairwise interactions
+init_one	(done)		perform initalization for one i,j type pair
+init_style 	(done)		initialization specific to this pair style
 
-write_restart           write i,j pair coeffs to restart file
-read_restart            read i,j pair coeffs from restart file
-write_restart_settings  write global settings to restart file
-read_restart_settings   read global settings from restart file
-single                  force and energy fo a single pairwise interaction between two atoms
+write_restart			write i,j pair coeffs to restart file
+read_restart			read i,j pair coeffs from restart file
+write_restart_settings	write global settings to restart file
+read_restart_settings	read global settings from restart file
+single				    force and energy fo a single pairwise interaction between two atoms
 */
 
 
 PairCHIMES::PairCHIMES(LAMMPS *lmp) : Pair(lmp)
 {
-    restartinfo = 0;
+	restartinfo = 0;
 
-    int me = comm->me;
-    MPI_Comm_rank(world,&me);
-
-    chimes_calculator.init(me);
+	int me = comm->me;
+	MPI_Comm_rank(world,&me);
+	
+	chimes_calculator.init(me);  
     for_fitting = false;
 #ifdef FINGERPRINT
     fingerprint = false;
 #endif
+	
+	// 2, 3, and 4-body vars for chimesFF access
 
-    // 2, 3, and 4-body vars for chimesFF access
+	dr     .resize(CHDIM);
+	dr_3b  .resize(3*CHDIM); 
+	dr_4b  .resize(6*CHDIM);
+	
+	dist_3b.resize(3);			       
+	dist_4b.resize(6);			       
 
-    dr     .resize(CHDIM);
-    dr_3b  .resize(3*CHDIM);
-    dr_4b  .resize(6*CHDIM);
-
-    dist_3b.resize(3);
-    dist_4b.resize(6);
-
-    // CHDIM is the number of spatial dimensions (usually 3).
-    force_2b.resize(2*CHDIM);
-    force_3b.resize(3*CHDIM) ;
-    force_4b.resize(4*CHDIM) ;
-
-    typ_idxs_2b.resize(2);
-    typ_idxs_3b.resize(3);
-    typ_idxs_4b.resize(4);
-
-    // Vars for neighlist construction
-
-    tmp_3mer.resize(3);
-    tmp_4mer.resize(4);
-
+	// CHDIM is the number of spatial dimensions (usually 3).
+	force_2b.resize(2*CHDIM);
+	force_3b.resize(3*CHDIM) ;
+	force_4b.resize(4*CHDIM) ;
+	
+	typ_idxs_2b.resize(2);
+	typ_idxs_3b.resize(3);
+	typ_idxs_4b.resize(4);
+	
+	// Vars for neighlist construction
+	
+	tmp_3mer.resize(3);
+	tmp_4mer.resize(4);   
+	
 #ifdef CHIMES_PAIR_REUSE
     reuse_greedy = false;
     reuse_block  = 32;
@@ -681,28 +681,28 @@ PairCHIMES::PairCHIMES(LAMMPS *lmp) : Pair(lmp)
     ru_nx4_group = 0;
 #endif
 
-    if (chimes_calculator.rank == 0)
-    {
-        std::cout << std::endl;
-        std::cout << "************************* WARNING (pair_style chimesFF) ************************" << std::endl;
-        std::cout << "Assuming n-body interactions have longer cutoffs than all (n+1)-body interactions" << std::endl;
-        std::cout << "************************* WARNING (pair_style chimesFF) ************************" << std::endl;
-        std::cout << std::endl;
-    }
-
+	if (chimes_calculator.rank == 0)
+	{ 
+		std::cout << std::endl;
+		std::cout << "************************* WARNING (pair_style chimesFF) ************************" << std::endl;
+		std::cout << "Assuming n-body interactions have longer cutoffs than all (n+1)-body interactions" << std::endl;
+		std::cout << "************************* WARNING (pair_style chimesFF) ************************" << std::endl;
+		std::cout << std::endl;
+	}
+		
 }
 
 PairCHIMES::~PairCHIMES()
 {
-    if (allocated)
-    {
-        memory->destroy(setflag);
-        memory->destroy(cutsq);
-    }
-
+	if (allocated) 
+	{   	    
+	    memory->destroy(setflag);
+	    memory->destroy(cutsq);
+	}
+    
     if (badness_stream.is_open())
         badness_stream.close();
-}
+}	
 
 void PairCHIMES::settings(int narg, char **arg)
 {
@@ -748,133 +748,133 @@ void PairCHIMES::settings(int narg, char **arg)
     arg  = kept.data();
 #endif
 
-    if (narg > 3)
-        error -> all(FLERR,"Illegal pair_style command. Expects no more than three arguments (string: fitting or fingerprint and iofreq)");
-
-    if (narg == 1)
-    {
+	if (narg > 3) 
+		error -> all(FLERR,"Illegal pair_style command. Expects no more than three arguments (string: fitting or fingerprint and iofreq)");
+        
+    if (narg == 1) 
+    {  
         if (utils::strmatch(arg[0],"fitting"))
         {
             for_fitting   = true;
             stringstream ss;
             ss << chimes_calculator.rank;
-            badness_stream.open("rank-" + ss.str() + ".badness.log");
+            badness_stream.open("rank-" + ss.str() + ".badness.log");    
         }
     }
-#ifdef FINGERPRINT
-    if (narg == 2)
-    {
+	#ifdef FINGERPRINT
+    if (narg == 2) 
+    {  
         if (utils::strmatch(arg[0],"fingerprint"))
         {
-
+			
             fingerprint   = true;
-            IO_freq = std::stoi(arg[1]);;
+			IO_freq = std::stoi(arg[1]);;  
         }
     }
-
-    if (narg == 3)
-    {
+	
+    if (narg == 3) 
+    {  
         if (utils::strmatch(arg[0],"fingerprint"))
         {
-
+			
             fingerprint   = true;
-            IO_freq = std::stoi(arg[1]);;
+			IO_freq = std::stoi(arg[1]);;  
         }
         if (utils::strmatch(arg[1],"fingerprint"))
         {
-
+			
             fingerprint   = true;
-            IO_freq = std::stoi(arg[2]);;
+			IO_freq = std::stoi(arg[2]);;  
         }
         if (utils::strmatch(arg[0],"fitting") || utils::strmatch(arg[1],"fitting") || utils::strmatch(arg[2],"fitting"))
         {
             for_fitting   = true;
             stringstream ss;
             ss << chimes_calculator.rank;
-            badness_stream.open("rank-" + ss.str() + ".badness.log");
+            badness_stream.open("rank-" + ss.str() + ".badness.log");  
         }
     }
-#endif
+	#endif
 
-    return;
+	return;	
 }
 
 void PairCHIMES::coeff(int narg, char **arg)
 {
-    // Expect: pair_coeff * * <parameter file name>
+	// Expect: pair_coeff * * <parameter file name>
 
-    if (narg != 3)
-        error -> all(FLERR,"Illegal pair_style command. Expects \"pair_coeff * * <parameter file name>\" ");
+	if (narg != 3) 
+		error -> all(FLERR,"Illegal pair_style command. Expects \"pair_coeff * * <parameter file name>\" ");
+	
+	chimesFF_paramfile = arg[2]; 
+	
+	chimes_calculator.read_parameters(chimesFF_paramfile);
 
-    chimesFF_paramfile = arg[2];
-
-    chimes_calculator.read_parameters(chimesFF_paramfile);
-
-    set_chimes_type();
-
+	set_chimes_type();
+    
     //chimes_calculator.set_atomtypes(chimes_type);
-    chimes_calculator.build_pair_int_trip_map() ;
+    chimes_calculator.build_pair_int_trip_map() ; 
     chimes_calculator.build_pair_int_quad_map() ;
 
-    // Set special LAMMPS flags/cutoffs
+	// Set special LAMMPS flags/cutoffs
+	
+	if (!allocated)
+		allocate();
+		
+	vector<vector<double> > cutoff_2b;
+	chimes_calculator.get_cutoff_2B(cutoff_2b);
 
-    if (!allocated)
-        allocate();
+	for(int i=1; i<=atom->ntypes; i++)
+	{
+		for(int j=i; j<=atom->ntypes; j++)
+		{
+			setflag[i][j] = 1;
+			setflag[j][i] = 1;
 
-    vector<vector<double> > cutoff_2b;
-    chimes_calculator.get_cutoff_2B(cutoff_2b);
+			if (chimes_type[i-1] < 0 || chimes_type[j-1] < 0)
+			{
+				cutsq[i][j] = 0.0;
+				if (i!=j)
+					cutsq[j][i] = 0.0;
+				continue;
+			}
+			
+			cutsq[i][j]  = cutoff_2b[ chimes_calculator.get_atom_pair_index( chimes_type[i-1]*chimes_calculator.natmtyps + chimes_type[j-1] ) ][1];
+			cutsq[i][j] *= cutsq[i][j];
+			
+			if (i!=j)
+			{
+				cutsq[j][i]  = cutoff_2b[ chimes_calculator.get_atom_pair_index( chimes_type[j-1]*chimes_calculator.natmtyps + chimes_type[i-1]) ][1];
+				cutsq[j][i] *= cutsq[j][i];
+			}			
+		}
+	}
 
-    for(int i=1; i<=atom->ntypes; i++)
-    {
-        for(int j=i; j<=atom->ntypes; j++)
-        {
-            setflag[i][j] = 1;
-            setflag[j][i] = 1;
-
-            if (chimes_type[i-1] < 0 || chimes_type[j-1] < 0)
-            {
-                cutsq[i][j] = 0.0;
-                if (i!=j)
-                    cutsq[j][i] = 0.0;
-                continue;
-            }
-
-            cutsq[i][j]  = cutoff_2b[ chimes_calculator.get_atom_pair_index( chimes_type[i-1]*chimes_calculator.natmtyps + chimes_type[j-1] ) ][1];
-            cutsq[i][j] *= cutsq[i][j];
-
-            if (i!=j)
-            {
-                cutsq[j][i]  = cutoff_2b[ chimes_calculator.get_atom_pair_index( chimes_type[j-1]*chimes_calculator.natmtyps + chimes_type[i-1]) ][1];
-                cutsq[j][i] *= cutsq[j][i];
-            }
-        }
-    }
-
-    maxcut_3b = chimes_calculator.max_cutoff_3B();
-    // if (maxcut_3b==0.0 && fingerprint){
-    //  double max_val = 20;
-    //  for (const auto& row : cutoff_2b) {
-    //      for (double val : row) {
-    //          if (val > max_val) {
-    //              max_val = val;
-    //          }
-    //      }
-    //  }
-    //  maxcut_3b=max_val;
-    // }
-    maxcut_4b = chimes_calculator.max_cutoff_4B();
-    // if (maxcut_4b==0.0 && fingerprint){maxcut_4b=maxcut_3b;}
+	maxcut_3b = chimes_calculator.max_cutoff_3B();
+	// if (maxcut_3b==0.0 && fingerprint){
+	// 	double max_val = 20;
+	// 	for (const auto& row : cutoff_2b) {
+	// 		for (double val : row) {
+	// 			if (val > max_val) {
+	// 				max_val = val;
+	// 			}
+	// 		}
+	// 	}
+	// 	maxcut_3b=max_val;
+	// }
+	maxcut_4b = chimes_calculator.max_cutoff_4B();
+	// if (maxcut_4b==0.0 && fingerprint){maxcut_4b=maxcut_3b;}
 }
-void writeClusterDataComp(const string& filename, const vector<vector<double>>& data)
+void writeClusterDataComp(const string& filename, const vector<vector<double>>& data) 
 {
     ofstream ofs(filename);
     if (!ofs) {
         cerr << "Error: Could not open file " << filename << endl;
         return;
     }
-
+    
     ostringstream buffer;
-
+    
     for (const auto& row : data) {
         for (size_t j = 0; j < row.size(); j++) {
             buffer << row[j];
@@ -889,32 +889,32 @@ void writeClusterDataComp(const string& filename, const vector<vector<double>>& 
 
 void PairCHIMES::allocate()
 {
-    allocated = 1;
+	allocated = 1;
+	
+	memory->create(setflag,atom->ntypes+1,atom->ntypes+1,"pair:setflag");
+	
+	for(int i=1; i<=atom->ntypes; i++)
+		for(int j=i; j<=atom->ntypes; j++)
+			setflag[i][j] = 0;
 
-    memory->create(setflag,atom->ntypes+1,atom->ntypes+1,"pair:setflag");
-
-    for(int i=1; i<=atom->ntypes; i++)
-        for(int j=i; j<=atom->ntypes; j++)
-            setflag[i][j] = 0;
-
-    memory->create(cutsq,atom->ntypes+1,atom->ntypes+1,"pair:cutsq");
-}
+	memory->create(cutsq,atom->ntypes+1,atom->ntypes+1,"pair:cutsq");
+}	
 
 void PairCHIMES::init_style()
 {
-    if (atom -> tag_enable == 0)
-        error -> all(FLERR,"Pair style ChIMES requires atom IDs");
+	if (atom -> tag_enable == 0)
+		error -> all(FLERR,"Pair style ChIMES requires atom IDs");
+	
+	if (force->newton_pair == 0)
+		error->all(FLERR,"Pair style ChIMES requires newton pair on");	
+	
+	// Set up neighbor lists... borrowing this from pair_airebo:
+	// need a full neighbor list, including neighbors of ghosts
 
-    if (force->newton_pair == 0)
-        error->all(FLERR,"Pair style ChIMES requires newton pair on");
-
-    // Set up neighbor lists... borrowing this from pair_airebo:
-    // need a full neighbor list, including neighbors of ghosts
-
-    // int irequest = neighbor->request(this,instance_me);
-    // neighbor->requests[irequest]->half = 0;
-    // neighbor->requests[irequest]->full = 1;
-    // neighbor->requests[irequest]->ghost = 1;
+	// int irequest = neighbor->request(this,instance_me);
+	// neighbor->requests[irequest]->half = 0;
+	// neighbor->requests[irequest]->full = 1;
+	// neighbor->requests[irequest]->ghost = 1;
 
     // Full list for the local atoms only: every cluster is built from its local atom with the
     // lowest tag, so the neighbor lists of ghost atoms were never used
@@ -923,105 +923,105 @@ void PairCHIMES::init_style()
 
 double PairCHIMES::init_one(int i, int j)
 {
-    // Sets the cutoff for each pair interaction.
-    // The maximum of the returned values are used to set outer cutoff for neighbor lists
-    // WARNING: This means linking won't work properly if 2-b interactions do not have larger cutoffs than all other
-    // higher bodied interactions!!
-
-    if (setflag[i][j] == 0)
-        error->all(FLERR,"All pair coeffs are not set");
-
-    return sqrt(cutsq[i][j]);
+	// Sets the cutoff for each pair interaction.
+	// The maximum of the returned values are used to set outer cutoff for neighbor lists
+	// WARNING: This means linking won't work properly if 2-b interactions do not have larger cutoffs than all other
+	// higher bodied interactions!!
+	
+	if (setflag[i][j] == 0) 
+		error->all(FLERR,"All pair coeffs are not set");
+	
+	return sqrt(cutsq[i][j]);
 }
 
 inline double PairCHIMES::get_dist(int i, int j, double *dr)
 {
-    double  **x    = atom -> x; // Access to system coordinates
+	double 	**x    = atom -> x;	// Access to system coordinates
 
-    dr[0] = x[j][0] - x[i][0];
-    dr[1] = x[j][1] - x[i][1];
-    dr[2] = x[j][2] - x[i][2];
+	dr[0] = x[j][0] - x[i][0];  
+	dr[1] = x[j][1] - x[i][1];
+	dr[2] = x[j][2] - x[i][2];
 
-    return sqrt(dr[0]*dr[0] + dr[1]*dr[1] + dr[2]*dr[2]);
+	return sqrt(dr[0]*dr[0] + dr[1]*dr[1] + dr[2]*dr[2]);
 }
 
 inline double PairCHIMES::get_dist(int i, int j)
 {
-    double dummy_dr[3] ;
+	double dummy_dr[3] ;
 
-    return get_dist(i,j, dummy_dr);
+	return get_dist(i,j, dummy_dr);
 }
 
 void PairCHIMES::build_mb_neighlists()
 {
 
 
-    if ( (chimes_calculator.poly_orders[1] == 0) &&  (chimes_calculator.poly_orders[2] == 0)
-#ifdef FINGERPRINT
-            && (!fingerprint)
-#endif
-        )
-        return;
+	if ( (chimes_calculator.poly_orders[1] == 0) &&  (chimes_calculator.poly_orders[2] == 0) 
+		#ifdef FINGERPRINT
+			&& (!fingerprint)
+		#endif
+		)
+		return;
 
-    // List gets built based on atoms owned by calling proc.
-
+	// List gets built based on atoms owned by calling proc. 
+	
     int i,j,k,inum,jnum, ii, jj, kk;                         // Local iterator vars
     int *ilist,*jlist, *numneigh,**firstneigh;               // Local neighborlist vars
-    tagint  *tag   = atom -> tag;                            // Access to global atom indices
+	tagint 	*tag   = atom -> tag;					         // Access to global atom indices
     chimes_key_t ikey, jkey;                                 // ownership keys (owner_key)
-    int     *type  = atom -> type;                           // Access to system atom types
+	int     *type  = atom -> type;					         // Access to system atom types
+	
+	double maxcut_3b_padded = maxcut_3b + neighbor-> skin;
+	
+	////////////////////////////////////////
+	// Access to neighbor list vars
+	////////////////////////////////////////
 
-    double maxcut_3b_padded = maxcut_3b + neighbor-> skin;
-
-    ////////////////////////////////////////
-    // Access to neighbor list vars
-    ////////////////////////////////////////
-
-    inum       = list -> inum;       // length of the list
-    ilist      = list -> ilist;      // list of i atoms for which neighbor list exists
-    numneigh   = list -> numneigh;   // length of each of the ilist neighbor lists
-    firstneigh = list -> firstneigh; // point to the list of neighbors of i
-
+	inum       = list -> inum; 		 // length of the list
+	ilist      = list -> ilist; 	 // list of i atoms for which neighbor list exists
+	numneigh   = list -> numneigh;	 // length of each of the ilist neighbor lists
+	firstneigh = list -> firstneigh; // point to the list of neighbors of i	
+	
     // j and k candidates of atom i: neighbors with a ChIMES type, key >= key of i and inside the
     // padded 3B cutoff, kept in neighbor-list order so the triplets come out in the same order
     // as from the full-list double loop.  Triplet storage from earlier builds is reused, so
     // there is no allocation per triplet.
     size_t n3 = 0;
 
-    for (ii = 0; ii < inum; ii++) // Loop over real atoms (ai)
-    {
-        i     = ilist[ii];
+	for (ii = 0; ii < inum; ii++) // Loop over real atoms (ai)	
+	{
+		i     = ilist[ii];		
         ikey  = owner_key(tag[i]);
-        jlist = firstneigh[i];
-        jnum  = numneigh[i];
+		jlist = firstneigh[i];		
+		jnum  = numneigh[i];	
 
-        if (chimes_type[type[i]-1] < 0)
-            continue;
+		if (chimes_type[type[i]-1] < 0)
+			continue;
 
         mb_short.clear();
 
-        for (jj = 0; jj < jnum; jj++)
-        {
+		for (jj = 0; jj < jnum; jj++)	
+		{
             j = jlist[jj] & NEIGHMASK;
 
             if (j == i || chimes_type[type[j]-1] < 0 || owner_key(tag[j]) < ikey)
-                continue;
+				continue;
 
             if (get_dist(i,j) >= maxcut_3b_padded)
-                continue;
-
+				continue;				
+				
             mb_short.push_back(j);
         }
 
         const int nshort = (int) mb_short.size();
-
+			
         for (jj = 0; jj < nshort; jj++)
-        {
+			{
             j    = mb_short[jj];
             jkey = owner_key(tag[j]);
 
             for (kk = 0; kk < nshort; kk++)
-            {
+				{
                 k = mb_short[kk];
 
                 if (k == j || owner_key(tag[k]) < jkey)
@@ -1038,17 +1038,17 @@ void PairCHIMES::build_mb_neighlists()
                 }
                 else
                 {
-                    tmp_3mer[0] = i;
-                    tmp_3mer[1] = j;
-                    tmp_3mer[2] = k;
-
-                    neighborlist_3mers.push_back(tmp_3mer);
-                }
+					tmp_3mer[0] = i;
+					tmp_3mer[1] = j;
+					tmp_3mer[2] = k;
+				
+					neighborlist_3mers.push_back(tmp_3mer);
+				}
                 n3++;
             }
         }
     }
-
+									
     neighborlist_3mers.resize(n3);
 
     return;
@@ -1695,8 +1695,8 @@ static inline void ru_greedy_cover(int nitems, int k, const std::vector<int> &ca
         bucket[c].pop_back();
 
         if (chosen[kk] || cnt[kk] != c)   // stale entry
-            continue;
-
+					continue;					
+				
         chosen[kk] = 1;
 
         for (int e = kstart[kk]; e < kstart[kk + 1]; e++)
@@ -1759,14 +1759,14 @@ void PairCHIMES::build_reuse_lists()
     x4_cls_matT.clear();
 
 #ifdef TABULATION
-#ifdef FINGERPRINT
+					#ifdef FINGERPRINT
     if (fingerprint)
         return;
-#endif
+					#endif
 
     const bool do3 = chimes_calculator.poly_orders[1] > 0;
     const bool do4 = chimes_calculator.poly_orders[2] > 0;
-
+					
     // 3B through pair reuse: the exact polynomial (3B grid tables are evaluated per
     // triplet).  4B through pair reuse: a CP model (tables or direct factors), or the exact
     // polynomial (parameter-file coefficients); 4B types with an SVD grid table (3|3 or 4|2)
@@ -1796,21 +1796,21 @@ void PairCHIMES::build_reuse_lists()
     std::vector<signed char> state3(info3.size(), 0), state4(info4.size(), 0);
 
     auto cluster_info = [&](int nbody, const int *typ) -> const chimesFF::CPClusterInfo *
-    {
+				{
         int idx = 0;
 
         for (int m = 0; m < nbody; m++)
             idx = idx*nct + typ[m];
-
+					
         std::vector<chimesFF::CPClusterInfo> &cache = (nbody == 3) ? info3 : info4;
         std::vector<signed char> &state = (nbody == 3) ? state3 : state4;
-
+											
         if (state[idx] == 0)
-        {
+{
             bool ok;
-
+	
             if (nbody == 4)
-            {
+	{
                 ok = chimes_calculator.cp4_cluster_info(typ, cache[idx]);
 
                 if (!ok)   // no CP model: the exact polynomial, unless a 4B grid table is used
@@ -1820,12 +1820,12 @@ void PairCHIMES::build_reuse_lists()
                     if (ok && cache[idx].type_index >= 0 && cache[idx].rank > 0)
                         ex4 = true;
                 }
-            }
-            else
+	}
+	else 
                 ok = chimes_calculator.exact3_cluster_info(typ, cache[idx]);
 
             state[idx] = ok ? 1 : -1;
-        }
+	}
 
         return (state[idx] > 0) ? &cache[idx] : nullptr;
     };
@@ -1850,9 +1850,9 @@ void PairCHIMES::build_reuse_lists()
     ru_cache4_type.assign(use4 ? nct*nct*nct*nct : 0, 0);
 
     for (int a = 0; a < nct; a++)
-    {
+	{
         for (int b = 0; b < nct; b++)
-        {
+		{
             for (int c = 0; c < nct; c++)
             {
                 const int typ[4] = { a, b, c, 0 };
@@ -1869,11 +1869,11 @@ void PairCHIMES::build_reuse_lists()
                             const int ta = typ[rt3[r][0]];
                             const int tb = typ[rt3[r][1]];
                             rc3p[ta*nct + tb] = rc3p[tb*nct + ta] = MAX(rc3p[ta*nct + tb], inf->rc_runtime[r]);
-                        }
-                }
-
+		}
+	}
+    
                 for (int d = 0; d < nct && use4; d++)
-                {
+	{
                     const int typ4[4] = { a, b, c, d };
                     const chimesFF::CPClusterInfo *inf = cluster_info(4, typ4);
 
@@ -2049,28 +2049,28 @@ void PairCHIMES::build_reuse_lists()
     {
         sl_start[i] = (int) sl_list.size();
 
-        if (chimes_type[type[i]-1] < 0)
-            continue;
+		if (chimes_type[type[i]-1] < 0)
+			continue;
 
         const int *jlist = firstneigh[i];
         const int jnum   = numneigh[i];
         const chimes_key_t ikey = owner_key(tag[i]);
-
+		
         for (int jj = 0; jj < jnum; jj++)
-        {
+		{
             const int j = jlist[jj] & NEIGHMASK;
 
             if (j == i || owner_key(tag[j]) < ikey || chimes_type[type[j]-1] < 0)
-                continue;
-
+				continue;
+				
             const double dx = x[j][0] - x[i][0];
             const double dy = x[j][1] - x[i][1];
             const double dz = x[j][2] - x[i][2];
             const double r2 = dx*dx + dy*dy + dz*dz;
-
+			
             if (r2 >= cut_list * cut_list)
-                continue;
-
+				continue;
+				
             ShortNeigh sn;
             sn.atom = j;
             sn.pid  = -1;
@@ -2086,7 +2086,7 @@ void PairCHIMES::build_reuse_lists()
         });
     }
     sl_start[nlocal] = (int) sl_list.size();
-
+			
     auto slot_pid = [&](int i, int a) -> int   // pair id of (i, list entry a), cached
     {
         if (sl_list[a].pid < 0)
@@ -2453,19 +2453,19 @@ void PairCHIMES::build_reuse_lists()
                             {
                                 quads.push_back({ { i, nb[u].atom, nb[v].atom, nb[w].atom } });
                             }
-                            else
-                            {
+            else
+			{
                                 lat.push_back(nb[w].atom);
                                 lp0.push_back(ipid(w));
                                 lp1.push_back(upid(u, w));
                                 lp2.push_back(upid(v, w));
                             }
                         }
-                    }
+			}
 
                     if (lat.empty())
                         continue;
-
+			
                     const int j   = nb[u].atom;
                     const int k   = nb[v].atom;
                     const int pij = ipid(u);
@@ -2473,7 +2473,7 @@ void PairCHIMES::build_reuse_lists()
                     const int pjk = upid(u, v);
 
                     if (nct == 1)
-                    {
+            {
                         emit_seed(i, j, k, 0, pij, pik, pjk, lat.data(), lp0.data(), lp1.data(), lp2.data(), (int) lat.size());
                         continue;
                     }
@@ -3117,13 +3117,13 @@ void PairCHIMES::compute_2b_fast(chimes2BTmp &tmp)
                 stensor[4] = -fs * dy * dz;
                 stensor[5] = -fs * dz * dz;
 
-                atmidxlst[0][0] = i;
-                atmidxlst[0][1] = j;
-
+			    atmidxlst[0][0] = i;
+			    atmidxlst[0][1] = j;
+			
                 ev_tally_mb(2, 1, atmidxlst, E, stensor);
-            }
+		}
             else
-            {
+	{
                 esum += E;
                 v[0] -= fs * dx * dx;
                 v[1] -= fs * dy * dy;
@@ -3131,7 +3131,7 @@ void PairCHIMES::compute_2b_fast(chimes2BTmp &tmp)
                 v[3] -= fs * dx * dy;
                 v[4] -= fs * dx * dz;
                 v[5] -= fs * dy * dz;
-            }
+	}
         }
 
         f[i][0] += fx;
@@ -3198,7 +3198,7 @@ void PairCHIMES::compute_mb_reuse()
     unsigned char * __restrict ok   = re_ok.data();
 #ifdef CHIMES_PAIR_CACHE
     unsigned char * __restrict used = re_used.data();
-#endif
+	#endif
 
     for (int e = 0; e < ne; e++)
         ok[e] = rr[re_pair[e]] < re_rc[e];
@@ -3210,7 +3210,7 @@ void PairCHIMES::compute_mb_reuse()
     long long n_cand = 0;
 
     for (int s = 0; s < ns; s++)
-    {
+	{
         const ReuseSeed &S = ru_seed[s];
 
         if (!S.inner && !(ok[S.ent[0]] & ok[S.ent[1]] & ok[S.ent[2]]))
@@ -3330,12 +3330,12 @@ void PairCHIMES::compute_mb_reuse()
 
     CHIMES_PROF_LAP(PROF_RU_PAIRS);
 
-    ////////////////////////////////////////
+		////////////////////////////////////////
     // 3B without CP tables: per-triplet evaluators, as without pair reuse
-    ////////////////////////////////////////
+		////////////////////////////////////////
 
     if (chimes_calculator.poly_orders[1] > 0 && !reuse_3b)
-    {
+		{
         int atmidxlst[6][2];
         double energy;
 
@@ -3350,50 +3350,53 @@ void PairCHIMES::compute_mb_reuse()
             const int j = neighborlist_3mers[t][1];
             const int k = neighborlist_3mers[t][2];
 
-            dist_3b[0] = get_dist(i, j, &dr_3b[0*CHDIM]);
-            dist_3b[1] = get_dist(i, k, &dr_3b[1*CHDIM]);
-            dist_3b[2] = get_dist(j, k, &dr_3b[2*CHDIM]);
+			dist_3b[0] = get_dist(i,j,&dr_3b[0*CHDIM]);
+			dist_3b[1] = get_dist(i,k,&dr_3b[1*CHDIM]);
+			dist_3b[2] = get_dist(j,k,&dr_3b[2*CHDIM]);
 
             if (dist_3b[0] >= maxcut_3b || dist_3b[1] >= maxcut_3b || dist_3b[2] >= maxcut_3b)
                 continue;
 
-            typ_idxs_3b[0] = chimes_type[type[i]-1];
-            typ_idxs_3b[1] = chimes_type[type[j]-1];
-            typ_idxs_3b[2] = chimes_type[type[k]-1];
+			typ_idxs_3b[0] = chimes_type[type[i]-1];
+			typ_idxs_3b[1] = chimes_type[type[j]-1];
+			typ_idxs_3b[2] = chimes_type[type[k]-1];
 
-            std::fill(force_3b.begin(), force_3b.end(), 0.0);
-            std::fill(stensor.begin(), stensor.end(), 0.0);
-
-            energy = 0.0;
-
+			std::fill(force_3b.begin(), force_3b.end(), 0.0) ;
+			std::fill(stensor.begin(), stensor.end(), 0.0) ;
+				
+			energy = 0.0 ;
+      
             if (chimes_calculator.tabulate_3B)
                 chimes_calculator.compute_3B_tab(dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp);
             else
-                chimes_calculator.compute_3B(dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp);
+				chimes_calculator.compute_3B( dist_3b, dr_3b, typ_idxs_3b, force_3b, stensor, energy, chimes_3btmp);
 
             for (int idx = 0; idx < CHDIM; idx++)
-            {
-                f[i][idx] += force_3b[0*CHDIM + idx];
-                f[j][idx] += force_3b[1*CHDIM + idx];
-                f[k][idx] += force_3b[2*CHDIM + idx];
-            }
+			{
+				f[i][idx] += force_3b[0*CHDIM+idx] ;
+				f[j][idx] += force_3b[1*CHDIM+idx] ;
+				f[k][idx] += force_3b[2*CHDIM+idx] ;
+			}
 
             if (vflag_atom)
             {
-                atmidxlst[0][0] = i; atmidxlst[0][1] = j;
-                atmidxlst[1][0] = i; atmidxlst[1][1] = k;
-                atmidxlst[2][0] = j; atmidxlst[2][1] = k;
+			    atmidxlst[0][0] = i;
+			    atmidxlst[0][1] = j;
+			    atmidxlst[1][0] = i;
+			    atmidxlst[1][1] = k;
+			    atmidxlst[2][0] = j;
+			    atmidxlst[2][1] = k;
             }
-
-            if (evflag)
-                ev_tally_mb(3, 3, atmidxlst, energy, stensor);
+			
+			if (evflag)
+				ev_tally_mb(3, 3, atmidxlst, energy, stensor);		            
 
             CHIMES_PROF_COUNT(PG_3B);
             CHIMES_PROF_ACTIVE(PG_3B, energy);
-        }
+		}		
 
         CHIMES_PROF_LAP(PROF_3B_EVAL);
-    }
+	}
 
     ////////////////////////////////////////
     // Sweep 2b, in passes of B rank terms: pair cache -> 3B -> 4B seeds and quadruplets
@@ -3418,7 +3421,7 @@ void PairCHIMES::compute_mb_reuse()
     // Pair functions of entry e for the rank terms [q0, q0 + B): X, then dX/dr at X + B.  With
     // the cache they are read from it; without, evaluated into scratch slot s.
     auto pfun = [&](int e, int s, int q0) -> const double *
-    {
+	{
 #ifdef CHIMES_PAIR_CACHE
         (void) s;
         (void) q0;
@@ -3927,11 +3930,11 @@ void PairCHIMES::compute_mb_reuse()
 
     CHIMES_PROF_LAP(PROF_RU_FORCE);
 #endif
-}
-#endif
+	}
+	#endif
 
 void PairCHIMES::compute(int eflag, int vflag)
-{
+	{
     CHIMES_PROF_BEGIN();
 
     // Everything is inside this block so that the destruction of the scratch
@@ -4060,15 +4063,15 @@ void PairCHIMES::compute(int eflag, int vflag)
 
         chimes_calculator.reset_badness();
 
-        ////////////////////////////////////////
+		////////////////////////////////////////
         // Compute 1-body interactions
         // (own loop so its cost is not mixed into the 2-body timing)
-        ////////////////////////////////////////
+		////////////////////////////////////////
 
         std::fill(stensor.begin(), stensor.end(), 0.0);
 
         for (ii = 0; ii < inum; ii++)
-        {
+		{
             i = ilist[ii];
 
             if (chimes_type[type[i]-1] < 0)
@@ -4286,9 +4289,12 @@ void PairCHIMES::compute(int eflag, int vflag)
 
                     if (vflag_atom)
                     {
-                        atmidxlst[0][0] = i; atmidxlst[0][1] = j;
-                        atmidxlst[1][0] = i; atmidxlst[1][1] = k;
-                        atmidxlst[2][0] = j; atmidxlst[2][1] = k;
+			    atmidxlst[0][0] = i;
+			    atmidxlst[0][1] = j;
+			    atmidxlst[1][0] = i;
+			    atmidxlst[1][1] = k;
+			    atmidxlst[2][0] = j;
+			    atmidxlst[2][1] = k;
                     }
 
                     if (evflag)
@@ -4352,8 +4358,8 @@ void PairCHIMES::compute(int eflag, int vflag)
                             continue;
 
                         CHIMES_PROF_EXTRA(EX_4B_CAND);
-
-                        dist_4b[2] = get_dist(i, l, &dr_4b[2*CHDIM]);
+			
+			dist_4b[2] = get_dist(i,l,&dr_4b[2*CHDIM]);
                         if (dist_4b[2] >= maxcut_4b)
                             continue;
 
@@ -4410,11 +4416,11 @@ void PairCHIMES::compute(int eflag, int vflag)
                             CHIMES_PROF_FINE_LAP(PROF_4B_PREPARE);
                         }
 
-                        std::fill(force_4b.begin(), force_4b.end(), 0.0);
-                        std::fill(stensor.begin(), stensor.end(), 0.0);
+			std::fill(force_4b.begin(), force_4b.end(), 0.0) ;
+			std::fill(stensor.begin(), stensor.end(), 0.0) ;
 
-                        energy = 0.0;
-
+			energy = 0.0 ;	
+			
                         CHIMES_PROF_EVAL_DECL();
 
                         if (reuse_ptr != nullptr && reuse_ptr->valid)
@@ -4457,26 +4463,32 @@ void PairCHIMES::compute(int eflag, int vflag)
                         CHIMES_PROF_EVAL_LAP();
 
                         for (idx = 0; idx < CHDIM; idx++)
-                        {
-                            f[i][idx] += force_4b[0*CHDIM + idx];
-                            f[j][idx] += force_4b[1*CHDIM + idx];
-                            f[k][idx] += force_4b[2*CHDIM + idx];
-                            f[l][idx] += force_4b[3*CHDIM + idx];
-                        }
-
-                        if (vflag_atom)
-                        {
-                            atmidxlst[0][0] = i; atmidxlst[0][1] = j;
-                            atmidxlst[1][0] = i; atmidxlst[1][1] = k;
-                            atmidxlst[2][0] = i; atmidxlst[2][1] = l;
-                            atmidxlst[3][0] = j; atmidxlst[3][1] = k;
-                            atmidxlst[4][0] = j; atmidxlst[4][1] = l;
-                            atmidxlst[5][0] = k; atmidxlst[5][1] = l;
-                        }
-
-                        if (evflag)
-                            ev_tally_mb(4, 6, atmidxlst, energy, stensor);
-
+			{
+				f[i][idx] += force_4b[0*CHDIM+idx] ;
+				f[j][idx] += force_4b[1*CHDIM+idx] ;
+				f[k][idx] += force_4b[2*CHDIM+idx] ;
+				f[l][idx] += force_4b[3*CHDIM+idx] ;
+			}
+			
+            if (vflag_atom) 
+            {
+			    atmidxlst[0][0] = i;
+			    atmidxlst[0][1] = j;
+			    atmidxlst[1][0] = i;
+			    atmidxlst[1][1] = k;
+			    atmidxlst[2][0] = i;
+			    atmidxlst[2][1] = l;
+			    atmidxlst[3][0] = j;
+			    atmidxlst[3][1] = k;
+			    atmidxlst[4][0] = j;
+			    atmidxlst[4][1] = l;
+			    atmidxlst[5][0] = k;
+			    atmidxlst[5][1] = l;
+            }
+			
+			if (evflag)
+				ev_tally_mb(4, 6, atmidxlst, energy, stensor);	
+            
                         CHIMES_PROF_COUNT(PG_4B);
                         CHIMES_PROF_ACTIVE(PG_4B, energy);
                         CHIMES_PROF_FINE_LAP(PROF_4B_FORCE_TALLY);
@@ -4488,10 +4500,10 @@ void PairCHIMES::compute(int eflag, int vflag)
             }     // end loop over triplets
 
             CHIMES_PROF_BLOCK_END(PROF_TRIP_DIST);   // triplet loop exit
-        }
+		}
 
-        if (vflag_fdotr)
-            virial_fdotr_compute();
+if (vflag_fdotr) 
+        virial_fdotr_compute();
 
         CHIMES_PROF_LAP(PROF_FDOTR);
     }
@@ -4505,60 +4517,60 @@ void PairCHIMES::compute(int eflag, int vflag)
     }
 #endif
 
-    return;
+	return;
 }
 
 void PairCHIMES::set_chimes_type()
 {
-    if(comm->me == 0)
-        std::cout << "Attempting to match LAMMPS and ChIMES atom types by comparing masses. Looking for matches within a tolerance of 1e-3." << std::endl;
-    int nmatches = 0;
+	if(comm->me == 0)
+		std::cout << "Attempting to match LAMMPS and ChIMES atom types by comparing masses. Looking for matches within a tolerance of 1e-3." << std::endl;
+	int nmatches = 0;
 
-    chimes_type.assign(atom->ntypes, -1);
+	chimes_type.assign(atom->ntypes, -1);
 
-    for (int i=1; i<= atom->ntypes; i++) // Lammps indexing starts at 1
-    {
-        bool matched = false;
-        for (int j=0; j<chimes_calculator.natmtyps; j++) // ChIMES indexing starts at 0
-        {
-            if (comm->me == 0)
-                std::cout << "LAMMPS atom type idx: " << i << " LAMMPS mass: " << atom->mass[i] << " ; " << "ChIMES atom type idx: " << j << " ChIMES mass: " << chimes_calculator.masses[j] << " ... status: " << std::endl;
-            if (abs(atom->mass[i] - chimes_calculator.masses[j]) < 1e-3) // Masses should match to at least 3 decimal places
-            {
-                chimes_type[i-1] = j;
-                nmatches++;
-                matched = true;
-                if(comm->me == 0)
-                    std::cout << "Match" << std::endl;
-                break;
-            }
-        }
-        if (!matched && comm->me == 0)
-            std::cout << "No match" << std::endl;
-    }
+	for (int i=1; i<= atom->ntypes; i++) // Lammps indexing starts at 1
+	{
+		bool matched = false;
+		for (int j=0; j<chimes_calculator.natmtyps; j++) // ChIMES indexing starts at 0
+		{
+			if (comm->me == 0)
+				std::cout << "LAMMPS atom type idx: " << i << " LAMMPS mass: " << atom->mass[i] << " ; " << "ChIMES atom type idx: " << j << " ChIMES mass: " << chimes_calculator.masses[j] << " ... status: " << std::endl;
+			if (abs(atom->mass[i] - chimes_calculator.masses[j]) < 1e-3) // Masses should match to at least 3 decimal places
+			{
+				chimes_type[i-1] = j;
+				nmatches++;
+				matched = true;
+				if(comm->me == 0)
+					std::cout << "Match" << std::endl;
+				break;
+			}
+		}
+		if (!matched && comm->me == 0)
+			std::cout << "No match" << std::endl;
+	}
 
-    if (nmatches == 0 && comm->me == 0)
-    {
-        std::cout << "ERROR: No element matches found between LAMMPS data file and ChIMES parameter file!" << std::endl;
-        std::cout << "       Either check your atom masses or do not request ChIMES interactions" << std::endl;
-        exit(0);
-    }
-    else if (nmatches < atom->ntypes && comm->me == 0)
-    {
-        // Commented out to allow for hybrid/overlay pair style. For example, combining ChIMES description for carbon
-        // with LJ description of Ar for simulations of carbon nanoparticles in an argon bath
-        //std::cout << "ERROR: LAMMPS coordinate file has " << atom->ntypes << " atom type masses" << std::endl;
-        //std::cout << "       but only found " << nmatches << " matches with the ChIMES parameter file." << std::endl;
-        //exit(0);
-
-        std::cout << "WARNING: LAMMPS coordinate file has " << atom->ntypes << " atom type masses" << std::endl;
-        std::cout << "       but only found " << nmatches << " matches with the ChIMES parameter file." << std::endl;
-        std::cout << "       Will not use ChIMES to evaluate interactions related to unmatched atom types!" << std::endl;
-    }
+	if (nmatches == 0 && comm->me == 0)
+	{
+		std::cout << "ERROR: No element matches found between LAMMPS data file and ChIMES parameter file!" << std::endl;
+		std::cout << "       Either check your atom masses or do not request ChIMES interactions" << std::endl;
+		exit(0);
+	}
+	else if (nmatches < atom->ntypes && comm->me == 0)
+	{
+		// Commented out to allow for hybrid/overlay pair style. For example, combining ChIMES description for carbon 
+		// with LJ description of Ar for simulations of carbon nanoparticles in an argon bath
+		//std::cout << "ERROR: LAMMPS coordinate file has " << atom->ntypes << " atom type masses" << std::endl; 
+		//std::cout << "       but only found " << nmatches << " matches with the ChIMES parameter file." << std::endl;
+		//exit(0);
+ 
+		std::cout << "WARNING: LAMMPS coordinate file has " << atom->ntypes << " atom type masses" << std::endl;
+		std::cout << "       but only found " << nmatches << " matches with the ChIMES parameter file." << std::endl;
+		std::cout << "       Will not use ChIMES to evaluate interactions related to unmatched atom types!" << std::endl;
+	}
 }
-
-void PairCHIMES::write_restart(){}
-void PairCHIMES::read_restart(){}
-void PairCHIMES::write_restart_settings(){}
-void PairCHIMES::read_restart_settings(){}
-void PairCHIMES::single(){}
+							
+void PairCHIMES::write_restart(){}			
+void PairCHIMES::read_restart(){}				
+void PairCHIMES::write_restart_settings(){}		
+void PairCHIMES::read_restart_settings(){}	
+void PairCHIMES::single(){}					
